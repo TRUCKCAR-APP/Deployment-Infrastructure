@@ -1,0 +1,19 @@
+# =============================================================================
+# Override OPCIONAL para depuración: publica los puertos internos SOLO en 127.0.0.1.
+# Útil cuando un servicio corre desde el IDE y necesita llamar a otro que sigue en Docker
+# (p. ej. AI-fleet en el host -> Load-Allocation en contenedor).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.debug.yml up -d
+#
+# Sin este archivo los microservicios quedan aislados en truckdar-network (configuración normal).
+# Nunca usarlo en un servidor compartido.
+# =============================================================================
+services:
+  user-identity:        { ports: ["127.0.0.1:8080:8080"] }
+  fleets-drivers:       { ports: ["127.0.0.1:8081:8081"] }
+  community-alerts:     { ports: ["127.0.0.1:8082:8082"] }
+  load-allocation:      { ports: ["127.0.0.1:8083:8083"] }
+  routing-restrictions: { ports: ["127.0.0.1:8084:8084"] }
+  ai-fleet-allocation:  { ports: ["127.0.0.1:8085:8085"] }
+  route-ai-agent:       { ports: ["127.0.0.1:8086:8086"] }
+  notifications:        { ports: ["127.0.0.1:8087:8087"] }

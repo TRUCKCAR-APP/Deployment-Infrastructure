@@ -1,0 +1,14 @@
+# Lista blanca: este repo solo versiona la orquestación. Los repos de los servicios se clonan
+# dentro de esta carpeta (scripts/clone-repos.*) y tienen su propio git.
+/*
+!/.gitignore
+!/.gitattributes
+!/README.md
+!/docker-compose.yml
+!/docker-compose.debug.yml
+!/.env.example
+!/docker/
+!/scripts/
+
+# Secretos locales
+.env
