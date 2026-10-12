@@ -186,6 +186,8 @@ services:
     environment:
       <<: *spring-env
       SPRING_DATA_REDIS_HOST: redis
+      # Telemetría: verifica con Load-Allocation la propiedad de una carga al suscribirse a /topic/trip/{loadId}.
+      TRUCKDAR_SERVICES_LOAD_ALLOCATION_URL: ${TRUCKDAR_LOAD_ALLOCATION_URL:-http://load-allocation:8083}
 
   community-alerts:
     <<: *spring-service
