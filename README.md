@@ -60,7 +60,7 @@ Deployment-Infrastructure/          <- este repo
 ├── docker/
 │   ├── spring-service.Dockerfile   imagen común (Maven -> JRE 21, usuario sin privilegios)
 │   └── spring-service.Dockerfile.dockerignore
-├── scripts/                        clonar repos, crear .env, verificar el aislamiento
+├── scripts/                        clone-repos, init-env y verify-isolation (.sh y .ps1)
 ├── .env.example
 ├── User-Identity/  api-gateway/  fleets-drivers/  ...   <- repos de servicios (no versionados aquí)
 └── truckdar-frontend/
@@ -94,15 +94,23 @@ docker compose up -d --build
 ```
 
 La primera construcción compila los 9 servicios (varios minutos); las siguientes reutilizan la caché de Maven.
-Luego:
-
-```bash
-docker compose ps                       # todos "Up"; postgis, kafka, redis y frontend "healthy"
-bash scripts/verify-isolation.sh        # puertos internos cerrados, :8000 y :5500 abiertos
-```
+`docker compose ps` debe mostrar todos los contenedores `Up` (postgis, kafka, redis y frontend `healthy`).
 
 Abrir `http://localhost:5500`, registrarse e iniciar sesión. Para actualizar el código:
 `scripts/clone-repos.*` (hace `git pull` de cada repo) y `docker compose up -d --build`.
+
+## Verificación del aislamiento
+
+Tras cada despliegue (y después de volver del modo debug) ejecute:
+
+```bash
+./scripts/verify-isolation.sh                                          # Linux / macOS / Git Bash
+powershell -ExecutionPolicy Bypass -File scripts\verify-isolation.ps1   # Windows PowerShell
+```
+
+Comprueba que los puertos internos (`:8080`–`:8087`) **no** respondan desde el host, que solo el gateway
+(`:8000`) y el frontend (`:5500`) sean accesibles y que los servicios se resuelvan por nombre dentro de
+`truckdar-network`. Termina con código distinto de 0 si algo falla, así que sirve también en CI.
 
 ## Variables (`.env`)
 
@@ -150,6 +158,7 @@ La API sigue entrando por `http://localhost:8000` y el frontend no cambia.
 
 **Volver a la configuración normal:** detener el proceso del IDE y ejecutar `docker compose up -d`
 (sin la variable): recrea el gateway y AI-fleet con las URLs internas y vuelve a arrancar el contenedor.
+Después, ejecutar `scripts/verify-isolation.*`.
 
 | Servicio en el IDE | Variable a redirigir | Contenedores a recrear con `--no-deps` |
 |---|---|---|
