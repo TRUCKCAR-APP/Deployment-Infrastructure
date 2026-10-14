@@ -1,6 +1,6 @@
-# TruckDar · Deployment-Infrastructure
+# TruckCar · Deployment-Infrastructure
 
-Orquestación local de la plataforma TruckDar con Docker Compose: infraestructura (PostgreSQL + PostGIS,
+Orquestación local de la plataforma TruckCar con Docker Compose: infraestructura (PostgreSQL + PostGIS,
 Kafka y Redis), los 9 microservicios Spring Boot, el api-gateway y el frontend, con los microservicios
 **aislados en una red privada** y un único punto de entrada para la API.
 
@@ -13,7 +13,7 @@ flowchart LR
         tools["Herramientas y pruebas locales<br/>(psql, mvnw test, IDE)"]
     end
 
-    subgraph net["truckdar-network (red privada de Docker)"]
+    subgraph net["truckcar-network (red privada de Docker)"]
         gw["api-gateway<br/>:8000"]
         fe["frontend (nginx)<br/>:80"]
         ui["user-identity :8080"]
@@ -37,7 +37,7 @@ flowchart LR
     tools -. "127.0.0.1:5432 / 9092 / 6379" .-> pg & kf & rd
 ```
 
-| Componente | Acceso desde el host | Dentro de `truckdar-network` |
+| Componente | Acceso desde el host | Dentro de `truckcar-network` |
 |---|---|---|
 | **api-gateway** | `http://localhost:8000` (única entrada a la API) | `api-gateway:8000` |
 | **frontend** | `http://localhost:5500` | `frontend:80` |
@@ -55,7 +55,7 @@ flowchart LR
 
 ```
 Deployment-Infrastructure/          <- este repo
-├── docker-compose.yml              stack completo y red truckdar-network
+├── docker-compose.yml              stack completo y red truckcar-network
 ├── docker-compose.debug.yml        override opcional: puertos internos en 127.0.0.1
 ├── docker/
 │   ├── spring-service.Dockerfile   imagen común (Maven -> JRE 21, usuario sin privilegios)
@@ -63,7 +63,7 @@ Deployment-Infrastructure/          <- este repo
 ├── scripts/                        clone-repos, init-env y verify-isolation (.sh y .ps1)
 ├── .env.example
 ├── User-Identity/  api-gateway/  fleets-drivers/  ...   <- repos de servicios (no versionados aquí)
-└── truckdar-frontend/
+└── truckcar-frontend/
 ```
 
 Los repositorios de los servicios se clonan **dentro** de esta carpeta (el `.gitignore` los excluye):
@@ -77,8 +77,8 @@ Unos 8 GB de RAM libres (cada servicio tiene un límite de 768 MB).
 **Windows (PowerShell)**
 
 ```powershell
-git clone https://github.com/TRUCKDAR/Deployment-Infrastructure.git truckdar
-cd truckdar
+git clone https://github.com/TRUCKDAR/Deployment-Infrastructure.git truckcar
+cd truckcar
 powershell -ExecutionPolicy Bypass -File scripts\clone-repos.ps1
 powershell -ExecutionPolicy Bypass -File scripts\init-env.ps1
 docker compose up -d --build
@@ -87,7 +87,7 @@ docker compose up -d --build
 **Linux / macOS / Git Bash**
 
 ```bash
-git clone https://github.com/TRUCKDAR/Deployment-Infrastructure.git truckdar && cd truckdar
+git clone https://github.com/TRUCKDAR/Deployment-Infrastructure.git truckcar && cd truckcar
 bash scripts/clone-repos.sh
 bash scripts/init-env.sh
 docker compose up -d --build
@@ -110,7 +110,7 @@ powershell -ExecutionPolicy Bypass -File scripts\verify-isolation.ps1   # Window
 
 Comprueba que los puertos internos (`:8080`–`:8087`) **no** respondan desde el host, que solo el gateway
 (`:8000`) y el frontend (`:5500`) sean accesibles y que los servicios se resuelvan por nombre dentro de
-`truckdar-network`. Termina con código distinto de 0 si algo falla, así que sirve también en CI.
+`truckcar-network`. Termina con código distinto de 0 si algo falla, así que sirve también en CI.
 
 ## Variables (`.env`)
 
@@ -118,14 +118,14 @@ Comprueba que los puertos internos (`:8080`–`:8087`) **no** respondan desde el
 
 | Variable | Obligatoria | Uso |
 |---|---|---|
-| `TRUCKDAR_JWT_SECRET` | sí | Secreto JWT en Base64 (≥ 256 bits) compartido por user-identity, api-gateway y notifications. Sin ella `docker compose` no arranca. |
+| `TRUCKCAR_JWT_SECRET` | sí | Secreto JWT en Base64 (≥ 256 bits) compartido por user-identity, api-gateway y notifications. Sin ella `docker compose` no arranca. |
 | `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_KEY` | no | Route-AI-agent. Sin ellas la interpretación de alertas con IA queda deshabilitada (el resto funciona). |
-| `TRUCKDAR_ASSIGNMENT_RESPONSE_TIMEOUT_MINUTES` | no | Minutos que tiene un conductor para responder una propuesta (por defecto 60). |
-| `TRUCKDAR_NOTIFICATIONS_API_KEY` | no | Habilita `POST /api/v1/notifications/send` con `X-API-KEY`. |
-| `TRUCKDAR_FRONTEND_DIR` | no | Carpeta del frontend si no es `./truckdar-frontend`. |
-| `TRUCKDAR_<SERVICIO>_URL` | no | Redirige las llamadas a un servicio (ver desarrollo local). |
+| `TRUCKCAR_ASSIGNMENT_RESPONSE_TIMEOUT_MINUTES` | no | Minutos que tiene un conductor para responder una propuesta (por defecto 60). |
+| `TRUCKCAR_NOTIFICATIONS_API_KEY` | no | Habilita `POST /api/v1/notifications/send` con `X-API-KEY`. |
+| `TRUCKCAR_FRONTEND_DIR` | no | Carpeta del frontend si no es `./truckcar-frontend`. |
+| `TRUCKCAR_<SERVICIO>_URL` | no | Redirige las llamadas a un servicio (ver desarrollo local). |
 
-Cambiar `TRUCKDAR_JWT_SECRET` invalida las sesiones abiertas: hay que volver a iniciar sesión.
+Cambiar `TRUCKCAR_JWT_SECRET` invalida las sesiones abiertas: hay que volver a iniciar sesión.
 
 ## Desarrollo local: un servicio desde el IDE
 
@@ -142,16 +142,16 @@ cd Load-Allocation
 
 # 3. En otra terminal, desde la raíz: redirigir a quienes lo llaman (--no-deps evita que
 #    Compose vuelva a arrancar el contenedor de load-allocation, del que depende el gateway)
-TRUCKDAR_LOAD_ALLOCATION_URL=http://host.docker.internal:8083 \
+TRUCKCAR_LOAD_ALLOCATION_URL=http://host.docker.internal:8083 \
   docker compose up -d --no-deps api-gateway ai-fleet-allocation
 ```
 
 En PowerShell el paso 3 es:
 
 ```powershell
-$env:TRUCKDAR_LOAD_ALLOCATION_URL = 'http://host.docker.internal:8083'
+$env:TRUCKCAR_LOAD_ALLOCATION_URL = 'http://host.docker.internal:8083'
 docker compose up -d --no-deps api-gateway ai-fleet-allocation
-Remove-Item Env:TRUCKDAR_LOAD_ALLOCATION_URL
+Remove-Item Env:TRUCKCAR_LOAD_ALLOCATION_URL
 ```
 
 La API sigue entrando por `http://localhost:8000` y el frontend no cambia.
@@ -162,20 +162,20 @@ Después, ejecutar `scripts/verify-isolation.*`.
 
 | Servicio en el IDE | Variable a redirigir | Contenedores a recrear con `--no-deps` |
 |---|---|---|
-| user-identity | `TRUCKDAR_USER_IDENTITY_URL` | `api-gateway` |
-| fleets-drivers | `TRUCKDAR_FLEETS_DRIVERS_URL` | `api-gateway ai-fleet-allocation` |
-| community-alerts | `TRUCKDAR_COMMUNITY_ALERTS_URL` | `api-gateway route-ai-agent` |
-| load-allocation | `TRUCKDAR_LOAD_ALLOCATION_URL` | `api-gateway ai-fleet-allocation` |
-| routing-restrictions | `TRUCKDAR_ROUTING_RESTRICTIONS_URL` | `api-gateway route-ai-agent` |
-| ai-fleet-allocation | `TRUCKDAR_AI_FLEET_ALLOCATION_URL` | `api-gateway` |
-| route-ai-agent | `TRUCKDAR_ROUTE_AI_AGENT_URL` | `api-gateway` |
-| notifications | `TRUCKDAR_NOTIFICATIONS_URL` | `api-gateway` |
+| user-identity | `TRUCKCAR_USER_IDENTITY_URL` | `api-gateway` |
+| fleets-drivers | `TRUCKCAR_FLEETS_DRIVERS_URL` | `api-gateway ai-fleet-allocation` |
+| community-alerts | `TRUCKCAR_COMMUNITY_ALERTS_URL` | `api-gateway route-ai-agent` |
+| load-allocation | `TRUCKCAR_LOAD_ALLOCATION_URL` | `api-gateway ai-fleet-allocation` |
+| routing-restrictions | `TRUCKCAR_ROUTING_RESTRICTIONS_URL` | `api-gateway route-ai-agent` |
+| ai-fleet-allocation | `TRUCKCAR_AI_FLEET_ALLOCATION_URL` | `api-gateway` |
+| route-ai-agent | `TRUCKCAR_ROUTE_AI_AGENT_URL` | `api-gateway` |
+| notifications | `TRUCKCAR_NOTIFICATIONS_URL` | `api-gateway` |
 
 Notas:
 
 - **No dejes corriendo el contenedor y el IDE a la vez**: ambos consumirían los mismos tópicos de Kafka
   con el mismo grupo y se repartirían los eventos.
-- user-identity, api-gateway y notifications necesitan `TRUCKDAR_JWT_SECRET` en el entorno del IDE con
+- user-identity, api-gateway y notifications necesitan `TRUCKCAR_JWT_SECRET` en el entorno del IDE con
   **el mismo valor** que `.env`.
 - Si el servicio del IDE llama a otros que siguen en Docker (ai-fleet → load-allocation y fleets-drivers;
   route-ai-agent → community-alerts y routing-restrictions), sus puertos internos no están publicados.
@@ -201,7 +201,7 @@ docker compose down -v                               # detener y borrar PostgreS
 
 | Síntoma | Causa y solución |
 |---|---|
-| `required variable TRUCKDAR_JWT_SECRET is missing a value` | Falta `.env`: ejecutar `scripts/init-env.*`. |
+| `required variable TRUCKCAR_JWT_SECRET is missing a value` | Falta `.env`: ejecutar `scripts/init-env.*`. |
 | `port is already allocated` en 5432/9092/6379/8000/5500 | Otro proceso o un compose antiguo usa el puerto: detenerlo (`docker compose down` en ese proyecto). |
 | Todas las peticiones responden 401 | Sesión firmada con otro secreto (se cambió `.env`): volver a iniciar sesión. |
 | Un servicio se reinicia en bucle | `docker compose logs <servicio>`; suele ser la base o Kafka aún sin arrancar (se recupera solo). |

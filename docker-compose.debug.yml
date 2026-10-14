@@ -5,7 +5,7 @@
 #
 #   docker compose -f docker-compose.yml -f docker-compose.debug.yml up -d
 #
-# Sin este archivo los microservicios quedan aislados en truckdar-network (configuración normal).
+# Sin este archivo los microservicios quedan aislados en truckcar-network (configuración normal).
 # Nunca usarlo en un servidor compartido.
 # =============================================================================
 services:

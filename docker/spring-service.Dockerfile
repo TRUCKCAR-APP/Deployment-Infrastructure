@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 # =============================================================================
-# Imagen genérica para los microservicios Spring Boot de TruckDar (Java 21).
+# Imagen genérica para los microservicios Spring Boot de TruckCar (Java 21).
 # Se construye con el directorio de cada servicio como contexto (ver docker-compose.yml);
 # las exclusiones están en spring-service.Dockerfile.dockerignore.
 # =============================================================================
@@ -14,8 +14,8 @@ RUN --mount=type=cache,target=/root/.m2 mvn -q -B package -DskipTests \
 
 FROM eclipse-temurin:21-jre
 WORKDIR /app
-RUN groupadd --system truckdar && useradd --system --gid truckdar --home /app truckdar
+RUN groupadd --system truckcar && useradd --system --gid truckcar --home /app truckcar
 COPY --from=build /app.jar /app/app.jar
-USER truckdar
+USER truckcar
 ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=70 -XX:+ExitOnOutOfMemoryError"
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

@@ -18,8 +18,8 @@ for url in http://localhost:8000/actuator/health http://localhost:5500/index.htm
   code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$url")"
   if [ "$code" = "200" ]; then echo "  OK    $url -> 200"; else echo "  FALLA $url -> $code"; FAILED=1; fi
 done
-echo "== Resolucion interna por nombre (dentro de truckdar-network)"
-code="$(docker run --rm --network truckdar-network curlimages/curl:8.10.1 -s -o /dev/null -w '%{http_code}' \
+echo "== Resolucion interna por nombre (dentro de truckcar-network)"
+code="$(docker run --rm --network truckcar-network curlimages/curl:8.10.1 -s -o /dev/null -w '%{http_code}' \
   http://load-allocation:8083/actuator/health 2>/dev/null)"
 if [ "$code" = "200" ]; then echo "  OK    load-allocation:8083 -> 200"; else echo "  FALLA load-allocation:8083 -> $code"; FAILED=1; fi
 exit $FAILED
