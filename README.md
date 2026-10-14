@@ -71,13 +71,13 @@ Los repositorios de los servicios se clonan **dentro** de esta carpeta (el `.git
 
 ## Puesta en marcha
 
-Requisitos: Docker Desktop (o Docker Engine + Compose v2), Git y acceso a la organización TRUCKDAR.
+Requisitos: Docker Desktop (o Docker Engine + Compose v2), Git y acceso a la organización TRUCKCAR-APP (TruckCar) en GitHub.
 Unos 8 GB de RAM libres (cada servicio tiene un límite de 768 MB).
 
 **Windows (PowerShell)**
 
 ```powershell
-git clone https://github.com/TRUCKDAR/Deployment-Infrastructure.git truckcar
+git clone https://github.com/TRUCKCAR-APP/Deployment-Infrastructure.git truckcar
 cd truckcar
 powershell -ExecutionPolicy Bypass -File scripts\clone-repos.ps1
 powershell -ExecutionPolicy Bypass -File scripts\init-env.ps1
@@ -87,7 +87,7 @@ docker compose up -d --build
 **Linux / macOS / Git Bash**
 
 ```bash
-git clone https://github.com/TRUCKDAR/Deployment-Infrastructure.git truckcar && cd truckcar
+git clone https://github.com/TRUCKCAR-APP/Deployment-Infrastructure.git truckcar && cd truckcar
 bash scripts/clone-repos.sh
 bash scripts/init-env.sh
 docker compose up -d --build

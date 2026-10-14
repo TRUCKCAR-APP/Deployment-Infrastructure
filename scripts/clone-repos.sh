@@ -11,6 +11,6 @@ for repo in "${REPOS[@]}"; do
     git -C "$repo" pull --ff-only origin main
   else
     echo "== $repo: clonando"
-    git clone "https://github.com/TRUCKDAR/$repo.git" "$repo"
+    git clone "https://github.com/TRUCKCAR-APP/$repo.git" "$repo"
   fi
 done
