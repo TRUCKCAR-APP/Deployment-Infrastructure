@@ -24,9 +24,11 @@ flowchart LR
         ai["ai-fleet-allocation :8085"]
         ra["route-ai-agent :8086"]
         nt["notifications :8087"]
+        pb[["pgbouncer :6432"]]
         pg[("postgis :5432")]
         kf[["kafka :29092"]]
         rd[("redis :6379")]
+        s3[("object-storage :9000")]
     end
 
     browser -- "localhost:5500" --> fe
@@ -34,6 +36,9 @@ flowchart LR
     gw --> ui & fd & ca & la & rr & ai & ra & nt
     ai --> la & fd
     ra --> ca & rr
+    ui & fd & ca & la & rr & ai & ra & nt --> pb --> pg
+    fe -- "/pod-media/ (URL prefirmada)" --> s3
+    la --> s3
     tools -. "127.0.0.1:5432 / 9092 / 6379" .-> pg & kf & rd
 ```
 
@@ -50,6 +55,32 @@ flowchart LR
   cabeceras llamando directamente a `:8081`, `:8083`, etc.
 - Los servicios se llaman entre sí por nombre de contenedor (`http://load-allocation:8083`); las URLs se
   pueden sobrescribir con variables (ver [Desarrollo local](#desarrollo-local-un-servicio-desde-el-ide)).
+
+## Base de datos: un esquema por servicio y PgBouncer
+
+- `truckcar_db` tiene **un esquema y un rol por servicio** (`user_identity`, `load_allocation`, `fleets_drivers`,
+  `community_alerts`, `routing_restrictions`, `fleet_allocation`, `route_ai_agent`, `notifications`). Cada rol es dueño
+  solo de su esquema: un servicio no puede leer las tablas de otro. En `public` solo queda PostGIS.
+- El job `db-init` (`docker/postgres/init-service-schemas.sql`) crea roles y esquemas y, en bases anteriores, **mueve
+  las tablas de `public` a su esquema conservando los datos**. Es idempotente y corre en cada `docker compose up`.
+- Cada servicio versiona su esquema con **Flyway** (`src/main/resources/db/migration`, historial en su propio esquema)
+  y arranca con `ddl-auto: validate`.
+- Los servicios se conectan a **PgBouncer** (`pgbouncer:6432`, modo `transaction`, JDBC con `prepareThreshold=0`):
+  decenas de instancias comparten como máximo 60 conexiones reales. PgBouncer obtiene las contraseñas de PostgreSQL
+  (`auth_query`); el `search_path` de cada servicio lo fija su rol.
+- Las contraseñas de los roles (`TRUCKCAR_DB_PASSWORD_<SERVICIO>`) se asignan al **crear** el rol. Para rotarlas:
+  `ALTER ROLE <rol> PASSWORD '...'`, actualizar `.env` y reiniciar el servicio.
+
+## Evidencias de entrega (POD) y PWA offline
+
+- La firma y la foto de la entrega se guardan en un **almacenamiento compatible con S3** (`object-storage`, RustFS;
+  en producción Amazon S3). La PWA pide a Load-Allocation URLs **prefirmadas** que fijan tipo, tamaño y SHA-256, sube
+  el archivo directamente y la entrega solo envía su clave y hash. La base de datos no guarda imágenes.
+- El almacenamiento no publica puertos: el nginx del frontend lo sirve en `/pod-media/` (mismo origen, sin CORS).
+- La PWA del conductor funciona sin señal: un **Service Worker** (`sw.js`) guarda la aplicación y las teselas del
+  mapa, y una **cola durable en IndexedDB** (`js/offlineQueue.js`) guarda posiciones, inicio y entrega del viaje
+  (con sus imágenes) y alertas. Al reconectar se envían en lotes a `/api/v1/{fleets-drivers|loads|alerts}/sync/batch`;
+  el backend los aplica en orden y sin duplicar (tabla `ingested_events`).
 
 ## Estructura
 

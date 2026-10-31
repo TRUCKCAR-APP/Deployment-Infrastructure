@@ -32,20 +32,21 @@ x-spring-service: &spring-service
   networks:
     - truckcar-network
   depends_on: &infra-ready
-    postgis:
+    pgbouncer:
       condition: service_healthy
+    db-init:
+      condition: service_completed_successfully
     kafka:
       condition: service_healthy
     kafka-init:
       condition: service_completed_successfully
 
 x-spring-env: &spring-env
-  SPRING_DATASOURCE_URL: jdbc:postgresql://postgis:5432/truckcar_db
-  SPRING_DATASOURCE_USERNAME: truckcar_admin
-  SPRING_DATASOURCE_PASSWORD: truckcar_password
-  # truckcar_db acepta 100 conexiones y la comparten todas las instancias: con el pool por defecto (10) el stack
-  # ocupaba 82 y una réplica más o una suite de tests desde el host agotaba la base. 5 por instancia bastan para la
-  # carga de cada servicio; en producción va PgBouncer delante de PostgreSQL.
+  # Todos los servicios pasan por PgBouncer (modo transaction): prepareThreshold=0 desactiva las sentencias
+  # preparadas del lado del servidor, que no sobreviven al cambio de conexión entre transacciones. Cada servicio
+  # define su propio SPRING_DATASOURCE_USERNAME/PASSWORD (un rol y un esquema por servicio, ver db-init).
+  SPRING_DATASOURCE_URL: jdbc:postgresql://pgbouncer:6432/truckcar_db?prepareThreshold=0
+  # 5 conexiones de cliente por instancia; PgBouncer las multiplexa sobre como máximo 60 conexiones reales.
   SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "5"
   SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: "1"
   SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
@@ -76,6 +77,91 @@ services:
       timeout: 5s
       retries: 20
       start_period: 10s
+    restart: unless-stopped
+
+  # Crea un rol y un esquema por servicio y mueve a cada esquema las tablas que vivían en public (idempotente:
+  # corre en cada arranque y termina). Las contraseñas de desarrollo se pueden sobrescribir en .env.
+  db-init:
+    image: postgis/postgis:16-3.4
+    container_name: truckcar-db-init
+    depends_on:
+      postgis:
+        condition: service_healthy
+    networks:
+      - truckcar-network
+    environment:
+      PGPASSWORD: truckcar_password
+    volumes:
+      - ./docker/postgres/init-service-schemas.sql:/sql/init-service-schemas.sql:ro
+    command:
+      - psql
+      - --host=postgis
+      - --username=truckcar_admin
+      - --dbname=truckcar_db
+      - --quiet
+      - --set=pw_user_identity=${TRUCKCAR_DB_PASSWORD_USER_IDENTITY:-user_identity_dev}
+      - --set=pw_load_allocation=${TRUCKCAR_DB_PASSWORD_LOAD_ALLOCATION:-load_allocation_dev}
+      - --set=pw_fleets_drivers=${TRUCKCAR_DB_PASSWORD_FLEETS_DRIVERS:-fleets_drivers_dev}
+      - --set=pw_community_alerts=${TRUCKCAR_DB_PASSWORD_COMMUNITY_ALERTS:-community_alerts_dev}
+      - --set=pw_routing_restrictions=${TRUCKCAR_DB_PASSWORD_ROUTING_RESTRICTIONS:-routing_restrictions_dev}
+      - --set=pw_fleet_allocation=${TRUCKCAR_DB_PASSWORD_FLEET_ALLOCATION:-fleet_allocation_dev}
+      - --set=pw_route_ai_agent=${TRUCKCAR_DB_PASSWORD_ROUTE_AI_AGENT:-route_ai_agent_dev}
+      - --set=pw_notifications=${TRUCKCAR_DB_PASSWORD_NOTIFICATIONS:-notifications_dev}
+      - --file=/sql/init-service-schemas.sql
+    restart: "no"
+
+  # PgBouncer 1.24 (modo transaction) delante de PostgreSQL: los servicios se conectan a pgbouncer:6432. Solo en
+  # truckcar-network; las herramientas del host siguen usando 127.0.0.1:5432.
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.24.1-p1
+    container_name: truckcar-pgbouncer
+    depends_on:
+      postgis:
+        condition: service_healthy
+    networks:
+      - truckcar-network
+    environment:
+      PGBOUNCER_AUTH_USER: truckcar_admin
+      PGBOUNCER_AUTH_PASSWORD: truckcar_password
+    volumes:
+      - ./docker/pgbouncer/pgbouncer.ini:/etc/pgbouncer-truckcar/pgbouncer.ini:ro
+    # userlist.txt solo con el usuario de auth_query; las contraseñas de los servicios las resuelve PostgreSQL.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        mkdir -p /tmp/pgbouncer
+        printf '"%s" "%s"\n' "$$PGBOUNCER_AUTH_USER" "$$PGBOUNCER_AUTH_PASSWORD" > /tmp/pgbouncer/userlist.txt
+        exec pgbouncer /etc/pgbouncer-truckcar/pgbouncer.ini
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 6432"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 64m
+    restart: unless-stopped
+
+  # Almacenamiento de objetos compatible con S3 (RustFS; las imágenes comunitarias de MinIO ya no se distribuyen):
+  # fotos y firmas de la prueba de entrega (POD). Sin puertos publicados: la PWA sube y descarga con URLs
+  # prefirmadas por Load-Allocation a través del nginx del frontend (/pod-media/), en su mismo origen y sin CORS.
+  # En producción el mismo código apunta a Amazon S3 (TRUCKCAR_S3_ENDPOINT vacío).
+  object-storage:
+    image: rustfs/rustfs:1.0.4
+    container_name: truckcar-object-storage
+    environment:
+      RUSTFS_ACCESS_KEY: ${TRUCKCAR_S3_ACCESS_KEY:-truckcar}
+      RUSTFS_SECRET_KEY: ${TRUCKCAR_S3_SECRET_KEY:-truckcar_s3_dev_secret}
+      RUSTFS_ADDRESS: ":9000"
+      RUSTFS_VOLUMES: /data
+    volumes:
+      - object_storage_data:/data
+    networks:
+      - truckcar-network
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 9000"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 256m
     restart: unless-stopped
 
   # Apache Kafka 3.8 en modo KRaft (sin Zookeeper), un solo nodo broker+controller.
@@ -201,6 +287,9 @@ services:
     container_name: truckcar-user-identity
     environment:
       <<: *spring-env
+      # Rol propio: dueño solo del esquema user_identity (ver docker/postgres/init-service-schemas.sql).
+      SPRING_DATASOURCE_USERNAME: user_identity
+      SPRING_DATASOURCE_PASSWORD: ${TRUCKCAR_DB_PASSWORD_USER_IDENTITY:-user_identity_dev}
       DB_HOST: postgis
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       TRUCKCAR_JWT_SECRET: ${TRUCKCAR_JWT_SECRET:?Defina TRUCKCAR_JWT_SECRET en .env (Base64 de 256 bits o más)}
@@ -222,6 +311,9 @@ services:
         condition: service_healthy
     environment:
       <<: *spring-env
+      # Rol propio: dueño solo del esquema fleets_drivers (ver docker/postgres/init-service-schemas.sql).
+      SPRING_DATASOURCE_USERNAME: fleets_drivers
+      SPRING_DATASOURCE_PASSWORD: ${TRUCKCAR_DB_PASSWORD_FLEETS_DRIVERS:-fleets_drivers_dev}
       SPRING_DATA_REDIS_HOST: redis
       # Telemetría: verifica con Load-Allocation la propiedad de una carga al suscribirse a /topic/trip.{loadId}.
       TRUCKCAR_SERVICES_LOAD_ALLOCATION_URL: ${TRUCKCAR_LOAD_ALLOCATION_URL:-http://load-allocation:8083}
@@ -237,15 +329,31 @@ services:
     container_name: truckcar-community-alerts
     environment:
       <<: *spring-env
+      # Rol propio: dueño solo del esquema community_alerts (ver docker/postgres/init-service-schemas.sql).
+      SPRING_DATASOURCE_USERNAME: community_alerts
+      SPRING_DATASOURCE_PASSWORD: ${TRUCKCAR_DB_PASSWORD_COMMUNITY_ALERTS:-community_alerts_dev}
 
   load-allocation:
     <<: *spring-service
     build: { context: ./Load-Allocation, dockerfile: ../docker/spring-service.Dockerfile }
     image: truckcar/load-allocation:local
     container_name: truckcar-load-allocation
+    depends_on:
+      <<: *infra-ready
+      # La migración V3 traslada las evidencias Base64 al almacenamiento de objetos.
+      object-storage:
+        condition: service_healthy
     environment:
       <<: *spring-env
+      # Rol propio: dueño solo del esquema load_allocation (ver docker/postgres/init-service-schemas.sql).
+      SPRING_DATASOURCE_USERNAME: load_allocation
+      SPRING_DATASOURCE_PASSWORD: ${TRUCKCAR_DB_PASSWORD_LOAD_ALLOCATION:-load_allocation_dev}
       TRUCKCAR_ASSIGNMENT_RESPONSE_TIMEOUT_MINUTES: ${TRUCKCAR_ASSIGNMENT_RESPONSE_TIMEOUT_MINUTES:-60}
+      # Evidencias de entrega: API S3 interna y dirección pública con la que se firman las URLs de la PWA.
+      TRUCKCAR_S3_ENDPOINT: http://object-storage:9000
+      TRUCKCAR_S3_PUBLIC_ENDPOINT: ${TRUCKCAR_S3_PUBLIC_ENDPOINT:-http://localhost:5500}
+      TRUCKCAR_S3_ACCESS_KEY: ${TRUCKCAR_S3_ACCESS_KEY:-truckcar}
+      TRUCKCAR_S3_SECRET_KEY: ${TRUCKCAR_S3_SECRET_KEY:-truckcar_s3_dev_secret}
 
   routing-restrictions:
     <<: *spring-service
@@ -254,6 +362,9 @@ services:
     container_name: truckcar-routing-restrictions
     environment:
       <<: *spring-env
+      # Rol propio: dueño solo del esquema routing_restrictions (ver docker/postgres/init-service-schemas.sql).
+      SPRING_DATASOURCE_USERNAME: routing_restrictions
+      SPRING_DATASOURCE_PASSWORD: ${TRUCKCAR_DB_PASSWORD_ROUTING_RESTRICTIONS:-routing_restrictions_dev}
 
   ai-fleet-allocation:
     <<: *spring-service
@@ -262,6 +373,9 @@ services:
     container_name: truckcar-ai-fleet-allocation
     environment:
       <<: *spring-env
+      # Rol propio: dueño solo del esquema fleet_allocation (ver docker/postgres/init-service-schemas.sql).
+      SPRING_DATASOURCE_USERNAME: fleet_allocation
+      SPRING_DATASOURCE_PASSWORD: ${TRUCKCAR_DB_PASSWORD_FLEET_ALLOCATION:-fleet_allocation_dev}
       TRUCKCAR_SERVICES_LOAD_ALLOCATION_URL: ${TRUCKCAR_LOAD_ALLOCATION_URL:-http://load-allocation:8083}
       TRUCKCAR_SERVICES_FLEETS_DRIVERS_URL: ${TRUCKCAR_FLEETS_DRIVERS_URL:-http://fleets-drivers:8081}
 
@@ -272,6 +386,9 @@ services:
     container_name: truckcar-route-ai-agent
     environment:
       <<: *spring-env
+      # Rol propio: dueño solo del esquema route_ai_agent (ver docker/postgres/init-service-schemas.sql).
+      SPRING_DATASOURCE_USERNAME: route_ai_agent
+      SPRING_DATASOURCE_PASSWORD: ${TRUCKCAR_DB_PASSWORD_ROUTE_AI_AGENT:-route_ai_agent_dev}
       TRUCKCAR_SERVICES_ALERTS_URL: ${TRUCKCAR_COMMUNITY_ALERTS_URL:-http://community-alerts:8082}
       TRUCKCAR_SERVICES_RESTRICTIONS_URL: ${TRUCKCAR_ROUTING_RESTRICTIONS_URL:-http://routing-restrictions:8084}
       # Se toman del entorno o de .env; nunca se escriben en este archivo.
@@ -285,7 +402,9 @@ services:
     container_name: truckcar-notifications
     environment:
       <<: *spring-env
-      SPRING_FLYWAY_URL: jdbc:postgresql://postgis:5432/truckcar_db
+      # Rol propio: dueño solo del esquema notifications (ver docker/postgres/init-service-schemas.sql).
+      SPRING_DATASOURCE_USERNAME: notifications
+      SPRING_DATASOURCE_PASSWORD: ${TRUCKCAR_DB_PASSWORD_NOTIFICATIONS:-notifications_dev}
       TRUCKCAR_JWT_SECRET: ${TRUCKCAR_JWT_SECRET:?Defina TRUCKCAR_JWT_SECRET en .env (Base64 de 256 bits o más)}
       TRUCKCAR_NOTIFICATIONS_API_KEY: ${TRUCKCAR_NOTIFICATIONS_API_KEY:-}
 
@@ -338,6 +457,11 @@ services:
       - "5500:80"
     volumes:
       - ${TRUCKCAR_FRONTEND_DIR:-./truckcar-frontend}:/usr/share/nginx/html:ro
+      # Service Worker sin caché HTTP y proxy /pod-media/ hacia el almacenamiento de objetos (URLs prefirmadas).
+      - ./docker/nginx/frontend.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      object-storage:
+        condition: service_healthy
     networks:
       - truckcar-network
     healthcheck:
@@ -355,3 +479,4 @@ networks:
 volumes:
   postgis_data:
   redis_data:
+  object_storage_data:
