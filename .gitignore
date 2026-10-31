@@ -10,6 +10,10 @@
 !/docker/
 !/scripts/
 !/k8s/
+# CI de la plataforma (el resto de .github, p. ej. herramientas locales, no se versiona)
+!/.github/
+/.github/*
+!/.github/workflows/
 
 # Secretos locales
 .env
