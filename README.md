@@ -1,8 +1,9 @@
 # TruckCar · Deployment-Infrastructure
 
-Orquestación local de la plataforma TruckCar con Docker Compose: infraestructura (PostgreSQL + PostGIS,
-Kafka y Redis), los 9 microservicios Spring Boot, el api-gateway y el frontend, con los microservicios
-**aislados en una red privada** y un único punto de entrada para la API.
+Orquestación de la plataforma TruckCar: Docker Compose para desarrollo (infraestructura, los 9 microservicios Spring
+Boot, el api-gateway, el frontend y el stack de observabilidad), manifiestos de Kubernetes para AWS EKS y Azure AKS
+(`k8s/`) y el pipeline de validación de la plataforma. Los microservicios están **aislados en una red privada** con un
+único punto de entrada para la API.
 
 ## Topología de red
 
@@ -29,6 +30,10 @@ flowchart LR
         kf[["kafka :29092"]]
         rd[("redis :6379")]
         s3[("object-storage :9000")]
+        otel[["otel-collector :4318"]]
+        tempo[("tempo :3200")]
+        prom[("prometheus :9090")]
+        graf["grafana :3000"]
     end
 
     browser -- "localhost:5500" --> fe
@@ -40,6 +45,10 @@ flowchart LR
     fe -- "/pod-media/ (URL prefirmada)" --> s3
     la --> s3
     tools -. "127.0.0.1:5432 / 9092 / 6379" .-> pg & kf & rd
+    ui & fd & ca & la & rr & ai & ra & nt & gw -. "trazas OTLP" .-> otel --> tempo
+    prom -. "scrape /actuator/prometheus" .-> ui & la & gw
+    graf --> prom & tempo
+    tools -. "127.0.0.1:3000 / 9090" .-> graf & prom
 ```
 
 | Componente | Acceso desde el host | Dentro de `truckcar-network` |
@@ -48,6 +57,8 @@ flowchart LR
 | **frontend** | `http://localhost:5500` | `frontend:80` |
 | user-identity, fleets-drivers, community-alerts, load-allocation, routing-restrictions, ai-fleet-allocation, route-ai-agent, notifications | **ninguno** (sin `ports:`) | `<servicio>:<puerto>`, p. ej. `load-allocation:8083` |
 | PostgreSQL / Kafka / Redis | solo `127.0.0.1:5432`, `127.0.0.1:9092`, `127.0.0.1:6379` | `postgis:5432`, `kafka:29092`, `redis:6379` |
+| Grafana / Prometheus | solo `http://127.0.0.1:3000`, `http://127.0.0.1:9090` | `grafana:3000`, `prometheus:9090` |
+| otel-collector, Tempo, pgbouncer-exporter, actuator del gateway | **ninguno** | `otel-collector:4318`, `tempo:3200`, `pgbouncer-exporter:9127`, `api-gateway:8090` |
 
 - El gateway valida el JWT, descarta las cabeceras de identidad que envíe el cliente y propaga
   `X-Auth-User`, `X-Auth-Role` y `X-Correlation-Id` a los servicios.
@@ -71,6 +82,30 @@ flowchart LR
 - Las contraseñas de los roles (`TRUCKCAR_DB_PASSWORD_<SERVICIO>`) se asignan al **crear** el rol. Para rotarlas:
   `ALTER ROLE <rol> PASSWORD '...'`, actualizar `.env` y reiniciar el servicio.
 
+## Observabilidad: trazas, métricas y dashboards
+
+- **Trazas distribuidas** (Micrometer Tracing + OpenTelemetry): cada servicio exporta por OTLP al `otel-collector`, que
+  las guarda en **Tempo**. El contexto W3C (`traceparent`) y el `X-Correlation-Id` que genera el gateway viajan por
+  HTTP (RestClient), Kafka (cabeceras de cada registro, también a través del outbox: cada evento guarda la traza que lo
+  originó) y los frames STOMP de telemetría. Una carga publicada produce **una sola traza** que recorre gateway →
+  Load-Allocation → Kafka → AI-fleet → Load-Allocation → Notifications.
+- **Logs** con `[servicio,traceId,spanId] [cid=X-Correlation-Id]` en cada línea: del log se llega a la traza.
+- **Métricas Prometheus** en `/actuator/prometheus` de cada servicio (el gateway en `:8090`), descubiertas por DNS
+  (cada réplica de fleets-drivers es un target). El gateway no enruta `/actuator/**`: nada de esto se expone fuera.
+  Además de JVM, HTTP, Hikari, Kafka y Resilience4j hay métricas de negocio:
+  `truckcar_load_assignment_latency_seconds`, `truckcar_load_assignment_outcomes_total`,
+  `truckcar_allocation_matching_seconds`, `truckcar_ai_requests_total` y `truckcar_ai_fallback_total`.
+- **Grafana** (`http://127.0.0.1:3000`, usuario `admin`, contraseña `TRUCKCAR_GRAFANA_ADMIN_PASSWORD` de `.env`) trae
+  aprovisionados Prometheus, Tempo y tres dashboards (`docker/observability/grafana/dashboards/`):
+  - **TruckCar · Plataforma**: latencia de asignación, duración del matching, tasa de fallback de IA, circuit breakers,
+    throughput, errores y lag de Kafka, API y lotes `/sync/batch` (con las trazas recientes de Tempo).
+  - **TruckCar · JVM**: heap, GC, CPU, hilos y pools Hikari por servicio.
+  - **TruckCar · PgBouncer**: conexiones de cliente y de servidor por rol, clientes en espera, consultas y latencia.
+- Para buscar la traza de una petición: Grafana → Explore → Tempo → `{ span."X-Correlation-Id" = "<valor>" }` (el
+  valor vuelve en la cabecera `X-Correlation-Id` de cada respuesta del gateway).
+- Alertas base en `docker/observability/prometheus/rules/` (servicio caído, 5xx, fallback de IA, PgBouncer saturado,
+  lag de Kafka). Muestreo de trazas: `TRUCKCAR_TRACING_SAMPLING_PROBABILITY` (1.0 en local).
+
 ## Evidencias de entrega (POD) y PWA offline
 
 - La firma y la foto de la entrega se guardan en un **almacenamiento compatible con S3** (`object-storage`, RustFS;
@@ -90,9 +125,12 @@ Deployment-Infrastructure/          <- este repo
 ├── docker-compose.debug.yml        override opcional: puertos internos en 127.0.0.1
 ├── docker/
 │   ├── spring-service.Dockerfile   imagen común (Maven -> JRE 21, usuario sin privilegios)
-│   └── spring-service.Dockerfile.dockerignore
+│   ├── postgres/  pgbouncer/  nginx/
+│   └── observability/              otel-collector, Tempo, Prometheus (+ alertas) y Grafana (datasources y dashboards)
+├── k8s/                            Kubernetes: base + overlays aws-eks y azure-aks (ver k8s/README.md)
+├── .github/workflows/platform.yml  validación estática y prueba del stack completo (reutilizable por los servicios)
 ├── scripts/                        clone-repos, init-env y verify-isolation (.sh y .ps1)
-├── .env.example
+├── .env.example                    todas las variables, con su clave en AWS Secrets Manager / Azure Key Vault
 ├── User-Identity/  api-gateway/  fleets-drivers/  ...   <- repos de servicios (no versionados aquí)
 └── truckcar-frontend/
 ```
@@ -139,17 +177,57 @@ Tras cada despliegue (y después de volver del modo debug) ejecute:
 powershell -ExecutionPolicy Bypass -File scripts\verify-isolation.ps1   # Windows PowerShell
 ```
 
-Comprueba que los puertos internos (`:8080`–`:8087`) **no** respondan desde el host, que solo el gateway
-(`:8000`) y el frontend (`:5500`) sean accesibles y que los servicios se resuelvan por nombre dentro de
-`truckcar-network`. Termina con código distinto de 0 si algo falla, así que sirve también en CI.
+Comprueba que los puertos internos (`:8080`–`:8087`, el actuator del gateway, PgBouncer, el collector y Tempo) **no**
+respondan desde el host; que el gateway (`:8000`) exija JWT y no deje alcanzar `/actuator/**` (tampoco con rutas
+`../`); que Prometheus sí llegue a `/actuator/prometheus` dentro de `truckcar-network`, y que Grafana y Prometheus solo
+escuchen en `127.0.0.1`. Termina con código distinto de 0 si algo falla: es el paso de aislamiento del CI.
+
+## CI/CD
+
+| Repo | Workflow | Qué hace |
+|---|---|---|
+| Cada servicio backend | `.github/workflows/ci.yml` | `mvn clean verify` con PostgreSQL/PostGIS, Kafka (y Redis en fleets-drivers) efímeros; en `main`, imagen en `ghcr.io/truckcar-app/<servicio>`; y el job **Plataforma** (abajo) con el servicio en su commit. |
+| truckcar-frontend | `.github/workflows/ci.yml` | Sintaxis de todos los scripts, ESLint y pruebas de `sw.js` y `js/offlineQueue.js` (IndexedDB en memoria); en `main`, imagen nginx de la PWA. |
+| Deployment-Infrastructure | `.github/workflows/platform.yml` | Validación estática (`docker compose config` y que no resuelva sin `.env`, `promtool`, `otelcol validate`, dashboards, `kustomize` + `kubeconform` de los dos overlays) y el **stack completo**: `docker compose up --build` con secretos generados, `verify-isolation.sh`, targets de Prometheus y trazas en Tempo. |
+
+El job del stack completo clona los repos privados (api-gateway, fleets-drivers): necesita el secreto
+`TRUCKCAR_REPOS_TOKEN` (token de GitHub de solo lectura de contenido sobre los repos de la organización), como secreto de
+la organización o de cada repo. Sin él se omite con un aviso.
+
+## Secretos
+
+Ningún archivo versionado contiene credenciales: `docker-compose.yml` exige cada secreto (`${VAR:?...}`) y no arranca
+sin `.env`, y los `application.yml` de los servicios no traen contraseñas por defecto (fuera de Docker se definen
+`DB_USER` y `DB_PASSWORD`).
+
+- **Local:** `scripts/init-env.*` genera `.env` con un valor aleatorio para cada variable marcada `[secreto]` en
+  `.env.example` (contraseñas de PostgreSQL por servicio, S3, RabbitMQ, PgBouncer, Grafana y el JWT). Con un `.env`
+  existente solo agrega las variables que falten.
+- **Producción:** los mismos valores viven en **AWS Secrets Manager** (`truckcar/jwt-secret`, `truckcar/db/<servicio>`...)
+  o **Azure Key Vault** (`truckcar-jwt-secret`, `truckcar-db-<servicio>`...). External Secrets Operator los sincroniza en
+  el Secret `truckcar-secrets` del namespace (`k8s/overlays/*/external-secrets.yaml`). En EKS, Load-Allocation accede a
+  S3 con IRSA (sin claves).
+- **Rotación de contraseñas de base de datos:** `ALTER ROLE <rol> PASSWORD '...'` en PostgreSQL, actualizar el valor en
+  `.env` (o en el gestor de secretos) y reiniciar el servicio. db-init solo asigna contraseñas al crear un rol.
+
+## Kubernetes
+
+`k8s/` contiene la base común y los overlays `aws-eks` y `azure-aks` (kustomize): Deployments con probes, límites,
+`securityContext` restringido y HPA/PDB; Service **headless** de fleets-drivers para el balanceo DNS del WebSocket;
+ConfigMap de plataforma; Secret vía External Secrets; Ingress; NetworkPolicies equivalentes a `truckcar-network`;
+PgBouncer, el Job db-init y el otel-collector. Detalle y despliegue en [k8s/README.md](k8s/README.md).
 
 ## Variables (`.env`)
 
-`scripts/init-env.*` crea `.env` desde `.env.example` con un secreto aleatorio. **`.env` no se versiona.**
+`scripts/init-env.*` crea `.env` desde `.env.example` con secretos aleatorios. **`.env` no se versiona.** La lista
+completa está en `.env.example`; las principales:
 
 | Variable | Obligatoria | Uso |
 |---|---|---|
 | `TRUCKCAR_JWT_SECRET` | sí | Secreto JWT en Base64 (≥ 256 bits) compartido por user-identity, api-gateway y notifications. Sin ella `docker compose` no arranca. |
+| `TRUCKCAR_DB_ADMIN_PASSWORD`, `TRUCKCAR_DB_PASSWORD_<SERVICIO>` | sí | Administrador de PostgreSQL (db-init y PgBouncer) y rol de cada servicio. |
+| `TRUCKCAR_S3_SECRET_KEY`, `TRUCKCAR_STOMP_RELAY_PASSCODE`, `TRUCKCAR_PGBOUNCER_STATS_PASSWORD`, `TRUCKCAR_GRAFANA_ADMIN_PASSWORD` | sí | Almacenamiento de evidencias, RabbitMQ, métricas de PgBouncer y Grafana. |
+| `TRUCKCAR_TRACING_SAMPLING_PROBABILITY` | no | Fracción de peticiones trazadas (1.0 por defecto). |
 | `TRUCKCAR_ADMIN_EMAIL`, `TRUCKCAR_ADMIN_PASSWORD` | no | ADMIN inicial: user-identity lo crea al arrancar si no existe ningún ADMIN (contraseña de 12 a 72 caracteres). Sin ellas no se crea ninguno. |
 | `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_KEY` | no | Route-AI-agent. Sin ellas (o si Azure falla, tarda más de 4 s o responde 429) las alertas se interpretan por reglas de palabras clave y ninguna se pierde. |
 | `TRUCKCAR_ASSIGNMENT_RESPONSE_TIMEOUT_MINUTES` | no | Minutos que tiene un conductor para responder una propuesta (por defecto 60). |
@@ -170,9 +248,10 @@ redirige hacia el host a quienes lo llaman (el gateway y, en este caso, AI-fleet
 # 1. Apagar el contenedor del servicio
 docker compose stop load-allocation
 
-# 2. Ejecutarlo en el host: por defecto usa localhost:5432 / 9092 / 6379, que están publicados en 127.0.0.1
+# 2. Ejecutarlo en el host: por defecto usa localhost:5432 / 9092 / 6379, que están publicados en 127.0.0.1.
+#    La contraseña de PostgreSQL no tiene valor por defecto: DB_PASSWORD = TRUCKCAR_DB_ADMIN_PASSWORD de .env
 cd Load-Allocation
-./mvnw spring-boot:run            # Windows: .\mvnw.cmd spring-boot:run
+DB_PASSWORD='<TRUCKCAR_DB_ADMIN_PASSWORD>' ./mvnw spring-boot:run   # PowerShell: $env:DB_PASSWORD='...'; .\mvnw.cmd spring-boot:run
 
 # 3. En otra terminal, desde la raíz: redirigir a quienes lo llaman (--no-deps evita que
 #    Compose vuelva a arrancar el contenedor de load-allocation, del que depende el gateway)
@@ -207,6 +286,7 @@ Después, ejecutar `scripts/verify-isolation.*`.
 
 Notas:
 
+- Las pruebas de contexto de cada servicio (`./mvnw verify`) usan la misma base local: definir `DB_PASSWORD` antes.
 - **No dejes corriendo el contenedor y el IDE a la vez**: ambos consumirían los mismos tópicos de Kafka
   con el mismo grupo y se repartirían los eventos.
 - user-identity, api-gateway y notifications necesitan `TRUCKCAR_JWT_SECRET` en el entorno del IDE con
@@ -235,7 +315,9 @@ docker compose down -v                               # detener y borrar PostgreS
 
 | Síntoma | Causa y solución |
 |---|---|
-| `required variable TRUCKCAR_JWT_SECRET is missing a value` | Falta `.env`: ejecutar `scripts/init-env.*`. |
+| `required variable TRUCKCAR_... is missing a value` | Falta `.env` o una variable nueva: ejecutar `scripts/init-env.*` (agrega las que falten). |
+| `password authentication failed` tras actualizar | El volumen de PostgreSQL ya tenía roles con otras contraseñas: poner en `.env` las que usa ese volumen (o rotarlas con `ALTER ROLE`). |
+| Un panel de Grafana sin datos | Las métricas de negocio aparecen con el primer evento (carga publicada, fallback de IA). Ver los targets en `http://127.0.0.1:9090/targets`. |
 | `port is already allocated` en 5432/9092/6379/8000/5500 | Otro proceso o un compose antiguo usa el puerto: detenerlo (`docker compose down` en ese proyecto). |
 | Todas las peticiones responden 401 | Sesión firmada con otro secreto (se cambió `.env`): volver a iniciar sesión. |
 | Un servicio se reinicia en bucle | `docker compose logs <servicio>`; suele ser la base o Kafka aún sin arrancar (se recupera solo). |
