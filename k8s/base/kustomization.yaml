@@ -1,0 +1,53 @@
+# Base común de TruckCar para EKS y AKS. Se despliega con un overlay: kubectl apply -k k8s/overlays/aws-eks
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: truckcar
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: truckcar
+    includeSelectors: false
+resources:
+  - namespace.yaml
+  - service-accounts.yaml
+  - platform-config.yaml
+  - data/pgbouncer.yaml
+  - data/db-init-job.yaml
+  - observability/otel-collector.yaml
+  - apps/api-gateway.yaml
+  - apps/user-identity.yaml
+  - apps/fleets-drivers.yaml
+  - apps/community-alerts.yaml
+  - apps/load-allocation.yaml
+  - apps/routing-restrictions.yaml
+  - apps/ai-fleet-allocation.yaml
+  - apps/route-ai-agent.yaml
+  - apps/notifications.yaml
+  - apps/frontend.yaml
+  - ingress.yaml
+  - network-policies.yaml
+  - autoscaling.yaml
+configMapGenerator:
+  - name: db-init-sql
+    files:
+      - data/init-service-schemas.sql
+images:
+  - name: ghcr.io/truckcar-app/api-gateway
+    newTag: main
+  - name: ghcr.io/truckcar-app/user-identity
+    newTag: main
+  - name: ghcr.io/truckcar-app/fleets-drivers
+    newTag: main
+  - name: ghcr.io/truckcar-app/community-alerts
+    newTag: main
+  - name: ghcr.io/truckcar-app/load-allocation
+    newTag: main
+  - name: ghcr.io/truckcar-app/routing-restrictions
+    newTag: main
+  - name: ghcr.io/truckcar-app/ai-fleet-allocation
+    newTag: main
+  - name: ghcr.io/truckcar-app/route-ai-agent
+    newTag: main
+  - name: ghcr.io/truckcar-app/notifications
+    newTag: main
+  - name: ghcr.io/truckcar-app/truckcar-frontend
+    newTag: main

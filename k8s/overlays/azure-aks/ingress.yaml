@@ -1,0 +1,40 @@
+# Application Routing (ingress-nginx gestionado por AKS). /pod-media va al almacenamiento S3 del clúster: las URLs
+# prefirmadas se firman con el dominio público, como hace el nginx del frontend en docker-compose.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: truckcar
+spec:
+  ingressClassName: webapprouting.kubernetes.azure.com
+  rules:
+    - host: truckcar.example.com
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: api-gateway
+                port:
+                  name: http
+          - path: /ws-telemetry
+            pathType: Prefix
+            backend:
+              service:
+                name: api-gateway
+                port:
+                  name: http
+          - path: /pod-media
+            pathType: Prefix
+            backend:
+              service:
+                name: object-storage
+                port:
+                  name: s3
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  name: http

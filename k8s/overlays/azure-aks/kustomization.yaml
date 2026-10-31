@@ -1,0 +1,44 @@
+# Azure AKS: Azure Database for PostgreSQL Flexible Server, Event Hubs (endpoint Kafka), Azure Cache for Redis y Azure
+# Key Vault con Workload Identity. Azure Blob Storage no habla S3, así que el overlay agrega el almacenamiento compatible
+# con S3 (RustFS) en el clúster sobre Azure Disk; RabbitMQ también corre en el clúster (no hay servicio gestionado).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+  - cluster-secret-store.yaml
+  - external-secrets.yaml
+  - object-storage.yaml
+patches:
+  - path: platform-config.yaml
+  - path: ingress.yaml
+images:
+  - name: ghcr.io/truckcar-app/api-gateway
+    newName: truckcar.azurecr.io/api-gateway
+    newTag: main
+  - name: ghcr.io/truckcar-app/user-identity
+    newName: truckcar.azurecr.io/user-identity
+    newTag: main
+  - name: ghcr.io/truckcar-app/fleets-drivers
+    newName: truckcar.azurecr.io/fleets-drivers
+    newTag: main
+  - name: ghcr.io/truckcar-app/community-alerts
+    newName: truckcar.azurecr.io/community-alerts
+    newTag: main
+  - name: ghcr.io/truckcar-app/load-allocation
+    newName: truckcar.azurecr.io/load-allocation
+    newTag: main
+  - name: ghcr.io/truckcar-app/routing-restrictions
+    newName: truckcar.azurecr.io/routing-restrictions
+    newTag: main
+  - name: ghcr.io/truckcar-app/ai-fleet-allocation
+    newName: truckcar.azurecr.io/ai-fleet-allocation
+    newTag: main
+  - name: ghcr.io/truckcar-app/route-ai-agent
+    newName: truckcar.azurecr.io/route-ai-agent
+    newTag: main
+  - name: ghcr.io/truckcar-app/notifications
+    newName: truckcar.azurecr.io/notifications
+    newTag: main
+  - name: ghcr.io/truckcar-app/truckcar-frontend
+    newName: truckcar.azurecr.io/truckcar-frontend
+    newTag: main

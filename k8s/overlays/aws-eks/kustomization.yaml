@@ -1,0 +1,43 @@
+# AWS EKS: RDS PostgreSQL, Amazon MSK, ElastiCache (Redis), Amazon MQ (RabbitMQ), S3 con IRSA y AWS Secrets Manager.
+# Los valores 123456789012 / abcd12 son de ejemplo: se reemplazan por los de la cuenta.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+  - cluster-secret-store.yaml
+  - external-secrets.yaml
+patches:
+  - path: platform-config.yaml
+  - path: ingress.yaml
+  - path: service-accounts.yaml
+images:
+  - name: ghcr.io/truckcar-app/api-gateway
+    newName: 123456789012.dkr.ecr.us-east-1.amazonaws.com/truckcar/api-gateway
+    newTag: main
+  - name: ghcr.io/truckcar-app/user-identity
+    newName: 123456789012.dkr.ecr.us-east-1.amazonaws.com/truckcar/user-identity
+    newTag: main
+  - name: ghcr.io/truckcar-app/fleets-drivers
+    newName: 123456789012.dkr.ecr.us-east-1.amazonaws.com/truckcar/fleets-drivers
+    newTag: main
+  - name: ghcr.io/truckcar-app/community-alerts
+    newName: 123456789012.dkr.ecr.us-east-1.amazonaws.com/truckcar/community-alerts
+    newTag: main
+  - name: ghcr.io/truckcar-app/load-allocation
+    newName: 123456789012.dkr.ecr.us-east-1.amazonaws.com/truckcar/load-allocation
+    newTag: main
+  - name: ghcr.io/truckcar-app/routing-restrictions
+    newName: 123456789012.dkr.ecr.us-east-1.amazonaws.com/truckcar/routing-restrictions
+    newTag: main
+  - name: ghcr.io/truckcar-app/ai-fleet-allocation
+    newName: 123456789012.dkr.ecr.us-east-1.amazonaws.com/truckcar/ai-fleet-allocation
+    newTag: main
+  - name: ghcr.io/truckcar-app/route-ai-agent
+    newName: 123456789012.dkr.ecr.us-east-1.amazonaws.com/truckcar/route-ai-agent
+    newTag: main
+  - name: ghcr.io/truckcar-app/notifications
+    newName: 123456789012.dkr.ecr.us-east-1.amazonaws.com/truckcar/notifications
+    newTag: main
+  - name: ghcr.io/truckcar-app/truckcar-frontend
+    newName: 123456789012.dkr.ecr.us-east-1.amazonaws.com/truckcar/truckcar-frontend
+    newTag: main

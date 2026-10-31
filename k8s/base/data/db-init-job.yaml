@@ -1,0 +1,121 @@
+# Crea un rol y un esquema por servicio (el mismo script que docker-compose; esta copia la verifica el CI). Idempotente:
+# se ejecuta en cada despliegue (hook PreSync de Argo CD o pre-install/pre-upgrade de Helm) antes de los Deployments.
+# Conecta directo a PostgreSQL, no por PgBouncer, con el usuario administrador.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-init
+  labels:
+    app.kubernetes.io/name: db-init
+spec:
+  backoffLimit: 4
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: db-init
+        app.kubernetes.io/part-of: truckcar
+        truckcar.io/tier: data
+    spec:
+      serviceAccountName: db-init
+      automountServiceAccountToken: false
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: psql
+          image: postgis/postgis:16-3.4
+          command: ["/bin/sh", "-c"]
+          args:
+            - >-
+              psql --host="$POSTGRES_HOST" --username="$POSTGRES_ADMIN_USER" --dbname=truckcar_db --quiet
+              --set=pw_user_identity="$PW_USER_IDENTITY"
+              --set=pw_fleets_drivers="$PW_FLEETS_DRIVERS"
+              --set=pw_community_alerts="$PW_COMMUNITY_ALERTS"
+              --set=pw_load_allocation="$PW_LOAD_ALLOCATION"
+              --set=pw_routing_restrictions="$PW_ROUTING_RESTRICTIONS"
+              --set=pw_fleet_allocation="$PW_FLEET_ALLOCATION"
+              --set=pw_route_ai_agent="$PW_ROUTE_AI_AGENT"
+              --set=pw_notifications="$PW_NOTIFICATIONS"
+              --file=/sql/init-service-schemas.sql
+          env:
+            - name: POSTGRES_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: truckcar-platform
+                  key: POSTGRES_HOST
+            - name: POSTGRES_ADMIN_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: truckcar-platform
+                  key: POSTGRES_ADMIN_USER
+            - name: PGSSLMODE
+              value: require
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: truckcar-secrets
+                  key: db-admin-password
+            - name: PW_USER_IDENTITY
+              valueFrom:
+                secretKeyRef:
+                  name: truckcar-secrets
+                  key: db-password-user-identity
+            - name: PW_FLEETS_DRIVERS
+              valueFrom:
+                secretKeyRef:
+                  name: truckcar-secrets
+                  key: db-password-fleets-drivers
+            - name: PW_COMMUNITY_ALERTS
+              valueFrom:
+                secretKeyRef:
+                  name: truckcar-secrets
+                  key: db-password-community-alerts
+            - name: PW_LOAD_ALLOCATION
+              valueFrom:
+                secretKeyRef:
+                  name: truckcar-secrets
+                  key: db-password-load-allocation
+            - name: PW_ROUTING_RESTRICTIONS
+              valueFrom:
+                secretKeyRef:
+                  name: truckcar-secrets
+                  key: db-password-routing-restrictions
+            - name: PW_FLEET_ALLOCATION
+              valueFrom:
+                secretKeyRef:
+                  name: truckcar-secrets
+                  key: db-password-fleet-allocation
+            - name: PW_ROUTE_AI_AGENT
+              valueFrom:
+                secretKeyRef:
+                  name: truckcar-secrets
+                  key: db-password-route-ai-agent
+            - name: PW_NOTIFICATIONS
+              valueFrom:
+                secretKeyRef:
+                  name: truckcar-secrets
+                  key: db-password-notifications
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: sql
+              mountPath: /sql
+              readOnly: true
+      volumes:
+        - name: sql
+          configMap:
+            name: db-init-sql

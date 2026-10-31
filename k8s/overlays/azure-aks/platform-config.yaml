@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: truckcar-platform
+data:
+  POSTGRES_HOST: truckcar-pg.postgres.database.azure.com
+  # Event Hubs expone Kafka en :9093 con SASL_SSL (la cadena de conexión va en el Secret si se habilita).
+  SPRING_KAFKA_BOOTSTRAP_SERVERS: truckcar-ehns.servicebus.windows.net:9093
+  SPRING_DATA_REDIS_HOST: truckcar.redis.cache.windows.net
+  TRUCKCAR_STOMP_RELAY_HOST: rabbitmq.truckcar-messaging.svc.cluster.local
+  # Almacenamiento compatible con S3 del overlay; las URLs prefirmadas usan el dominio público (Ingress /pod-media).
+  TRUCKCAR_S3_ENDPOINT: http://object-storage:9000
+  TRUCKCAR_S3_PUBLIC_ENDPOINT: https://truckcar.example.com
+  TRUCKCAR_STORAGE_S3_PATH_STYLE: "true"
+  # Trazas a Azure Monitor (Application Insights) a través de su collector OTLP.
+  OTEL_TRACES_ENDPOINT: azure-monitor-collector.observability:4317

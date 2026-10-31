@@ -1,0 +1,42 @@
+# Un solo dominio: /api y /ws-telemetry al api-gateway, el resto a la PWA. Base para ingress-nginx; los overlays
+# cambian la clase y las anotaciones (AWS Load Balancer Controller en EKS, Application Routing en AKS).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: truckcar
+  annotations:
+    # WebSocket de telemetría: conexiones largas.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-body-size: 6m
+    cert-manager.io/cluster-issuer: letsencrypt
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [truckcar.example.com]
+      secretName: truckcar-tls
+  rules:
+    - host: truckcar.example.com
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: api-gateway
+                port:
+                  name: http
+          - path: /ws-telemetry
+            pathType: Prefix
+            backend:
+              service:
+                name: api-gateway
+                port:
+                  name: http
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  name: http

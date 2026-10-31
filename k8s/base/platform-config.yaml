@@ -1,0 +1,36 @@
+# Configuración no sensible común a todos los servicios (envFrom). Los overlays sustituyen los endpoints de los
+# servicios gestionados; los secretos van aparte, en el Secret truckcar-secrets.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: truckcar-platform
+data:
+  TZ: America/Bogota
+  TRUCKCAR_ENVIRONMENT: production
+  # Base de datos: todos los servicios pasan por PgBouncer (modo transaction, sin sentencias preparadas del servidor).
+  SPRING_DATASOURCE_URL: jdbc:postgresql://pgbouncer:6432/truckcar_db?prepareThreshold=0
+  SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "5"
+  SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: "1"
+  POSTGRES_HOST: truckcar-db.example.internal
+  POSTGRES_ADMIN_USER: truckcar_admin
+  # Mensajería y caché (servicios gestionados o en el clúster).
+  SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka-bootstrap.example.internal:9092
+  SPRING_DATA_REDIS_HOST: redis.example.internal
+  TRUCKCAR_STOMP_RELAY_HOST: rabbitmq.example.internal
+  TRUCKCAR_STOMP_RELAY_LOGIN: truckcar
+  # Observabilidad: muestreo del 20 % de las peticiones.
+  MANAGEMENT_OTLP_TRACING_ENDPOINT: http://otel-collector:4318/v1/traces
+  TRUCKCAR_TRACING_SAMPLING_PROBABILITY: "0.2"
+  OTEL_RESOURCE_ATTRIBUTES: deployment.environment=production
+  OTEL_TRACES_ENDPOINT: tempo-distributor.observability:4317
+  OTEL_TRACES_INSECURE: "true"
+  # Evidencias de entrega (POD).
+  TRUCKCAR_S3_BUCKET: truckcar-pod-media
+  TRUCKCAR_S3_REGION: us-east-1
+  TRUCKCAR_S3_ENDPOINT: ""
+  TRUCKCAR_S3_PUBLIC_ENDPOINT: ""
+  # Orígenes del navegador (mismo dominio que el Ingress).
+  TRUCKCAR_CORS_ALLOWED_ORIGINS: https://truckcar.example.com
+  TRUCKCAR_WEBSOCKET_ALLOWED_ORIGINS: https://truckcar.example.com
+  TRUCKCAR_ADMIN_EMAIL: ""
+  AZURE_OPENAI_ENDPOINT: ""

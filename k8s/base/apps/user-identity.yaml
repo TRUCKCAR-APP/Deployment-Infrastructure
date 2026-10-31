@@ -1,0 +1,122 @@
+# user-identity: registro, login y emisión de JWT.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-identity
+  labels:
+    app.kubernetes.io/name: user-identity
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: user-identity
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: user-identity
+        app.kubernetes.io/part-of: truckcar
+        truckcar.io/tier: backend
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /actuator/prometheus
+        prometheus.io/port: "8080"
+    spec:
+      serviceAccountName: user-identity
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 40
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: user-identity
+          image: ghcr.io/truckcar-app/user-identity
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: truckcar-platform
+          env:
+            - name: SPRING_DATASOURCE_USERNAME
+              value: user_identity
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: truckcar-secrets
+                  key: db-password-user-identity
+            - name: TRUCKCAR_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: truckcar-secrets
+                  key: jwt-secret
+            - name: TRUCKCAR_ADMIN_EMAIL
+              valueFrom:
+                configMapKeyRef:
+                  name: truckcar-platform
+                  key: TRUCKCAR_ADMIN_EMAIL
+                  optional: true
+            - name: TRUCKCAR_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: truckcar-secrets
+                  key: admin-password
+                  optional: true
+          # Spring Boot activa los grupos de health liveness/readiness al detectar Kubernetes.
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 5
+            failureThreshold: 36
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              memory: 768Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-identity
+  labels:
+    app.kubernetes.io/name: user-identity
+spec:
+  selector:
+    app.kubernetes.io/name: user-identity
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

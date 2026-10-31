@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: truckcar
+  labels:
+    # Pod Security Admission: todos los pods de TruckCar cumplen el perfil restricted.
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted

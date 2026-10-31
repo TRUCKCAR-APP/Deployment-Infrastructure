@@ -1,0 +1,117 @@
+# load-allocation: ciclo de vida de las cargas, POD en S3 e ingesta offline de viajes.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: load-allocation
+  labels:
+    app.kubernetes.io/name: load-allocation
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: load-allocation
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: load-allocation
+        app.kubernetes.io/part-of: truckcar
+        truckcar.io/tier: backend
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /actuator/prometheus
+        prometheus.io/port: "8083"
+    spec:
+      serviceAccountName: load-allocation
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 40
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: load-allocation
+          image: ghcr.io/truckcar-app/load-allocation
+          ports:
+            - name: http
+              containerPort: 8083
+          envFrom:
+            - configMapRef:
+                name: truckcar-platform
+          env:
+            - name: SPRING_DATASOURCE_USERNAME
+              value: load_allocation
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: truckcar-secrets
+                  key: db-password-load-allocation
+            - name: TRUCKCAR_S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: truckcar-secrets
+                  key: s3-access-key
+                  optional: true
+            - name: TRUCKCAR_S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: truckcar-secrets
+                  key: s3-secret-key
+                  optional: true
+          # Spring Boot activa los grupos de health liveness/readiness al detectar Kubernetes.
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 5
+            failureThreshold: 36
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              memory: 768Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: load-allocation
+  labels:
+    app.kubernetes.io/name: load-allocation
+spec:
+  selector:
+    app.kubernetes.io/name: load-allocation
+  ports:
+    - name: http
+      port: 8083
+      targetPort: http

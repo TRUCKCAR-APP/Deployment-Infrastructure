@@ -1,0 +1,119 @@
+# Mismo aislamiento que la red truckcar-network de docker-compose: nada entra a un pod salvo lo permitido aquí.
+# Requiere un CNI con NetworkPolicy (VPC CNI con network policies en EKS, Azure CNI con Cilium en AKS). Los namespaces
+# del controlador de Ingress y de Prometheus se etiquetan truckcar.io/ingress-controller y truckcar.io/monitoring.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+---
+# Desde el controlador de Ingress solo se llega al api-gateway (:8000) y a la PWA (:8080); nunca al actuator (:8090).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-controller-to-edge
+spec:
+  podSelector:
+    matchLabels:
+      truckcar.io/tier: edge
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              truckcar.io/ingress-controller: "true"
+      ports:
+        - port: 8000
+        - port: 8080
+---
+# Los backends solo aceptan tráfico de otros pods de TruckCar (gateway y llamadas entre servicios) en su puerto HTTP.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-platform-to-backends
+spec:
+  podSelector:
+    matchLabels:
+      truckcar.io/tier: backend
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: truckcar
+      ports:
+        - port: 8080
+        - port: 8081
+        - port: 8082
+        - port: 8083
+        - port: 8084
+        - port: 8085
+        - port: 8086
+        - port: 8087
+---
+# PgBouncer solo para los backends (db-init conecta directo a la base gestionada).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backends-to-pgbouncer
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: pgbouncer
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              truckcar.io/tier: backend
+      ports:
+        - port: 6432
+---
+# Trazas OTLP solo desde pods de TruckCar.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-platform-to-otel-collector
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: otel-collector
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: truckcar
+      ports:
+        - port: 4318
+        - port: 4317
+---
+# Prometheus lee /actuator/prometheus, el actuator del gateway y los exporters.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-monitoring-scrape
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: truckcar
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              truckcar.io/monitoring: "true"
+      ports:
+        - port: 8090
+        - port: 8080
+        - port: 8081
+        - port: 8082
+        - port: 8083
+        - port: 8084
+        - port: 8085
+        - port: 8086
+        - port: 8087
+        - port: 9127
+        - port: 8888

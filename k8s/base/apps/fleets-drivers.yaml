@@ -1,0 +1,139 @@
+# fleets-drivers: estado de flota (Redis), telemetría STOMP e ingesta offline de posiciones.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fleets-drivers
+  labels:
+    app.kubernetes.io/name: fleets-drivers
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fleets-drivers
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: fleets-drivers
+        app.kubernetes.io/part-of: truckcar
+        truckcar.io/tier: backend
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /actuator/prometheus
+        prometheus.io/port: "8081"
+    spec:
+      serviceAccountName: fleets-drivers
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 40
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: fleets-drivers
+      containers:
+        - name: fleets-drivers
+          image: ghcr.io/truckcar-app/fleets-drivers
+          ports:
+            - name: http
+              containerPort: 8081
+          envFrom:
+            - configMapRef:
+                name: truckcar-platform
+          env:
+            - name: SPRING_DATASOURCE_USERNAME
+              value: fleets_drivers
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: truckcar-secrets
+                  key: db-password-fleets-drivers
+            - name: TRUCKCAR_SERVICES_LOAD_ALLOCATION_URL
+              value: "http://load-allocation:8083"
+            - name: TRUCKCAR_STOMP_RELAY_ENABLED
+              value: "true"
+            - name: TRUCKCAR_STOMP_RELAY_PASSCODE
+              valueFrom:
+                secretKeyRef:
+                  name: truckcar-secrets
+                  key: rabbitmq-passcode
+          # Spring Boot activa los grupos de health liveness/readiness al detectar Kubernetes.
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 5
+            failureThreshold: 36
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              memory: 768Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+# Service headless: el DNS devuelve la IP de cada pod. El api-gateway reparte por DNS (lb://fleets-drivers) las
+# peticiones y las conexiones WebSocket de telemetría entre las réplicas; RabbitMQ entrega los mensajes STOMP a todas.
+apiVersion: v1
+kind: Service
+metadata:
+  name: fleets-drivers
+  labels:
+    app.kubernetes.io/name: fleets-drivers
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: fleets-drivers
+  ports:
+    - name: http
+      port: 8081
+      targetPort: http
+---
+# Service ClusterIP para las llamadas REST entre servicios (AI-fleet): una IP virtual balanceada por kube-proxy.
+apiVersion: v1
+kind: Service
+metadata:
+  name: fleets-drivers-api
+  labels:
+    app.kubernetes.io/name: fleets-drivers
+spec:
+  selector:
+    app.kubernetes.io/name: fleets-drivers
+  ports:
+    - name: http
+      port: 8081
+      targetPort: http
