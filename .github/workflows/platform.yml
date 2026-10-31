@@ -133,14 +133,25 @@ jobs:
 
       - name: Métricas y trazas
         run: |
-          up=$(curl -s http://127.0.0.1:9090/api/v1/query --data-urlencode 'query=count(up{job="truckcar-services"} == 1)' | jq -r '.data.result[0].value[1] // 0')
+          # Prometheus descubre los servicios por DNS cada 15 s y los lee cada 15 s: un servicio recién arrancado tarda hasta
+          # ~30 s en aparecer como target. Se espera hasta 2 minutos a cada condición.
+          up=0
+          for _ in $(seq 1 24); do
+            up=$(curl -s http://127.0.0.1:9090/api/v1/query --data-urlencode 'query=count(up{job="truckcar-services"} == 1)' | jq -r '.data.result[0].value[1] // 0')
+            [ "$up" -ge 9 ] && break
+            sleep 5
+          done
           echo "targets de Prometheus arriba: $up"; [ "$up" -ge 9 ] || { echo "::error::Prometheus no ve los 9 servicios"; exit 1; }
           curl -s -o /dev/null -H "X-Correlation-Id: ci-$GITHUB_RUN_ID" http://localhost:8000/api/v1/loads
-          sleep 10
           pw=$(grep '^TRUCKCAR_GRAFANA_ADMIN_PASSWORD=' .env | cut -d= -f2)
-          traces=$(curl -s -u "admin:$pw" -G http://127.0.0.1:3000/api/datasources/proxy/uid/tempo/api/search \
-            --data-urlencode 'q={ resource.service.name = "ms-api-gateway" }' --data-urlencode limit=5 | jq '.traces | length')
-          echo "trazas del gateway en Tempo: $traces"; [ "$traces" -ge 1 ] || { echo "::error::Tempo no recibió trazas"; exit 1; }
+          traces=0
+          for _ in $(seq 1 24); do
+            traces=$(curl -s -u "admin:$pw" -G http://127.0.0.1:3000/api/datasources/proxy/uid/tempo/api/search \
+              --data-urlencode 'q={ resource.service.name = "ms-api-gateway" }' --data-urlencode limit=5 | jq '.traces | length')
+            [ "${traces:-0}" -ge 1 ] && break
+            sleep 5
+          done
+          echo "trazas del gateway en Tempo: $traces"; [ "${traces:-0}" -ge 1 ] || { echo "::error::Tempo no recibió trazas"; exit 1; }
 
       - name: Logs de la plataforma
         if: failure()
