@@ -190,9 +190,8 @@ escuchen en `127.0.0.1`. Termina con código distinto de 0 si algo falla: es el 
 | truckcar-frontend | `.github/workflows/ci.yml` | Sintaxis de todos los scripts, ESLint y pruebas de `sw.js` y `js/offlineQueue.js` (IndexedDB en memoria); en `main`, imagen nginx de la PWA. |
 | Deployment-Infrastructure | `.github/workflows/platform.yml` | Validación estática (`docker compose config` y que no resuelva sin `.env`, `promtool`, `otelcol validate`, dashboards, `kustomize` + `kubeconform` de los dos overlays) y el **stack completo**: `docker compose up --build` con secretos generados, `verify-isolation.sh`, targets de Prometheus y trazas en Tempo. |
 
-El job del stack completo clona los repos privados (api-gateway, fleets-drivers): necesita el secreto
-`TRUCKCAR_REPOS_TOKEN` (token de GitHub de solo lectura de contenido sobre los repos de la organización), como secreto de
-la organización o de cada repo. Sin él se omite con un aviso.
+Los repos de TRUCKCAR-APP son públicos: el job del stack completo los clona sin credenciales y exige que pasen las 25
+comprobaciones de `verify-isolation.sh`.
 
 ## Secretos
 

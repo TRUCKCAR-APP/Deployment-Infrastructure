@@ -6,8 +6,7 @@
 # Se ejecuta en este repo y lo reutilizan los repos de los servicios (workflow_call): con service-repo/service-ref el
 # servicio que llama se prueba en su commit y el resto en main.
 #
-# api-gateway y fleets-drivers son privados: clonarlos requiere el secreto TRUCKCAR_REPOS_TOKEN (token de solo lectura
-# de contenido sobre los repos de la organización). Sin él, el job isolation se omite con un aviso.
+# Todos los repos de TRUCKCAR-APP son públicos: se clonan por HTTPS sin credenciales.
 name: Platform
 
 on:
@@ -26,9 +25,6 @@ on:
         description: Commit del servicio
         type: string
         default: ""
-    secrets:
-      TRUCKCAR_REPOS_TOKEN:
-        required: false
 
 permissions:
   contents: read
@@ -95,32 +91,17 @@ jobs:
     needs: static
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    env:
-      REPOS_TOKEN: ${{ secrets.TRUCKCAR_REPOS_TOKEN }}
     steps:
-      - name: Token para los repos privados
-        id: token
-        run: |
-          if [ -z "$REPOS_TOKEN" ]; then
-            echo "::warning::Falta el secreto TRUCKCAR_REPOS_TOKEN (lectura de api-gateway y fleets-drivers): se omite la prueba del stack completo."
-            echo "available=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          fi
-
       - uses: actions/checkout@v4
-        if: steps.token.outputs.available == 'true'
         with:
           repository: TRUCKCAR-APP/Deployment-Infrastructure
           ref: ${{ env.INFRA_REF }}
 
       - name: Clonar los servicios
-        if: steps.token.outputs.available == 'true'
         env:
           SERVICE_REPO: ${{ inputs.service-repo }}
           SERVICE_REF: ${{ inputs.service-ref }}
         run: |
-          git config --global url."https://x-access-token:${REPOS_TOKEN}@github.com/".insteadOf "https://github.com/"
           bash scripts/clone-repos.sh
           if [ -n "$SERVICE_REPO" ] && [ -n "$SERVICE_REF" ]; then
             git -C "$SERVICE_REPO" fetch --depth 1 origin "$SERVICE_REF"
@@ -129,7 +110,6 @@ jobs:
           fi
 
       - name: Levantar la plataforma
-        if: steps.token.outputs.available == 'true'
         run: |
           bash scripts/init-env.sh
           docker compose up -d --build
@@ -143,11 +123,15 @@ jobs:
           echo "::error::la plataforma no arrancó a tiempo"; exit 1
 
       - name: Aislamiento de red
-        if: steps.token.outputs.available == 'true'
-        run: bash scripts/verify-isolation.sh
+        run: |
+          set -o pipefail
+          bash scripts/verify-isolation.sh | tee isolation.txt
+          # Las 25 comprobaciones deben ejecutarse y pasar: si una desaparece del script, el job falla.
+          checks=$(grep -c "^  OK " isolation.txt)
+          echo "comprobaciones OK: $checks/25"
+          [ "$checks" -eq 25 ] || { echo "::error::se esperaban 25 comprobaciones de aislamiento, hubo $checks"; exit 1; }
 
       - name: Métricas y trazas
-        if: steps.token.outputs.available == 'true'
         run: |
           up=$(curl -s http://127.0.0.1:9090/api/v1/query --data-urlencode 'query=count(up{job="truckcar-services"} == 1)' | jq -r '.data.result[0].value[1] // 0')
           echo "targets de Prometheus arriba: $up"; [ "$up" -ge 9 ] || { echo "::error::Prometheus no ve los 9 servicios"; exit 1; }
@@ -159,11 +143,11 @@ jobs:
           echo "trazas del gateway en Tempo: $traces"; [ "$traces" -ge 1 ] || { echo "::error::Tempo no recibió trazas"; exit 1; }
 
       - name: Logs de la plataforma
-        if: failure() && steps.token.outputs.available == 'true'
+        if: failure()
         run: docker compose logs --no-color --tail 200 > platform-logs.txt; tail -n 400 platform-logs.txt
 
       - uses: actions/upload-artifact@v4
-        if: failure() && steps.token.outputs.available == 'true'
+        if: failure()
         with:
           name: platform-logs
           path: platform-logs.txt
