@@ -10,8 +10,11 @@
 #   - Todo corre en la red privada truckcar-network y los servicios se llaman por nombre
 #     (http://load-allocation:8083, kafka:29092, postgis:5432...).
 #   - Los microservicios NO publican puertos: solo se llega a ellos a través del api-gateway.
-#   - Puertos publicados: 8000 (api-gateway) y 5500 (frontend). PostgreSQL, Kafka y Redis
-#     solo escuchan en 127.0.0.1 del host, para herramientas de desarrollo y pruebas locales.
+#   - Puertos publicados: 8000 (api-gateway) y 5500 (frontend). PostgreSQL, Kafka, Redis, Grafana (3000) y
+#     Prometheus (9090) solo escuchan en 127.0.0.1 del host, para herramientas de desarrollo y pruebas locales.
+#
+# Observabilidad: cada servicio exporta trazas OTLP al otel-collector (-> Tempo) y expone /actuator/prometheus en la
+# red interna (Prometheus lo descubre por DNS). Grafana trae aprovisionados los datasources y los dashboards.
 #
 # Variables (archivo .env junto a este compose, no versionar; scripts/init-env.sh lo genera con secretos aleatorios):
 #   Este archivo no contiene credenciales: las contraseñas de PostgreSQL (administrador y un rol por servicio), S3,
@@ -51,6 +54,10 @@ x-spring-env: &spring-env
   SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "5"
   SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: "1"
   SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+  # Trazas OTLP (HTTP) hacia el otel-collector; muestreo configurable (1.0 = todas las peticiones).
+  MANAGEMENT_OTLP_TRACING_ENDPOINT: http://otel-collector:4318/v1/traces
+  TRUCKCAR_TRACING_SAMPLING_PROBABILITY: ${TRUCKCAR_TRACING_SAMPLING_PROBABILITY:-1.0}
+  OTEL_RESOURCE_ATTRIBUTES: deployment.environment=${TRUCKCAR_ENVIRONMENT:-local}
   TZ: America/Bogota
 
 services:
@@ -125,14 +132,18 @@ services:
     environment:
       PGBOUNCER_AUTH_USER: truckcar_admin
       PGBOUNCER_AUTH_PASSWORD: ${TRUCKCAR_DB_ADMIN_PASSWORD:?Defina TRUCKCAR_DB_ADMIN_PASSWORD en .env (scripts/init-env.sh)}
+      # Usuario de solo lectura de la consola de PgBouncer (SHOW POOLS/STATS) para pgbouncer-exporter.
+      PGBOUNCER_STATS_PASSWORD: ${TRUCKCAR_PGBOUNCER_STATS_PASSWORD:?Defina TRUCKCAR_PGBOUNCER_STATS_PASSWORD en .env (scripts/init-env.sh)}
     volumes:
       - ./docker/pgbouncer/pgbouncer.ini:/etc/pgbouncer-truckcar/pgbouncer.ini:ro
-    # userlist.txt solo con el usuario de auth_query; las contraseñas de los servicios las resuelve PostgreSQL.
+    # userlist.txt solo con el usuario de auth_query y el de métricas; las contraseñas de los servicios las resuelve
+    # PostgreSQL.
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
         mkdir -p /tmp/pgbouncer
-        printf '"%s" "%s"\n' "$$PGBOUNCER_AUTH_USER" "$$PGBOUNCER_AUTH_PASSWORD" > /tmp/pgbouncer/userlist.txt
+        printf '"%s" "%s"\n"pgbouncer_stats" "%s"\n' "$$PGBOUNCER_AUTH_USER" "$$PGBOUNCER_AUTH_PASSWORD" \
+          "$$PGBOUNCER_STATS_PASSWORD" > /tmp/pgbouncer/userlist.txt
         exec pgbouncer /etc/pgbouncer-truckcar/pgbouncer.ini
     healthcheck:
       test: ["CMD-SHELL", "nc -z 127.0.0.1 6432"]
@@ -438,6 +449,11 @@ services:
       - notifications
     environment:
       TZ: America/Bogota
+      # Actuator (health, prometheus) en :8090, solo dentro de truckcar-network.
+      MANAGEMENT_SERVER_PORT: "8090"
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://otel-collector:4318/v1/traces
+      TRUCKCAR_TRACING_SAMPLING_PROBABILITY: ${TRUCKCAR_TRACING_SAMPLING_PROBABILITY:-1.0}
+      OTEL_RESOURCE_ATTRIBUTES: deployment.environment=${TRUCKCAR_ENVIRONMENT:-local}
       TRUCKCAR_JWT_SECRET: ${TRUCKCAR_JWT_SECRET:?Defina TRUCKCAR_JWT_SECRET en .env (scripts/init-env.sh)}
       TRUCKCAR_USER_IDENTITY_URL: ${TRUCKCAR_USER_IDENTITY_URL:-http://user-identity:8080}
       # lb://: el gateway reparte peticiones y conexiones WebSocket entre todas las réplicas de fleets-drivers
@@ -473,6 +489,99 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # ===========================================================================
+  # Observabilidad: trazas (otel-collector -> Tempo), métricas (Prometheus) y dashboards (Grafana)
+  # ===========================================================================
+
+  # Punto único de entrada de las trazas OTLP de los servicios (HTTP :4318, gRPC :4317). Sin puertos publicados.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.111.0
+    container_name: truckcar-otel-collector
+    command: ["--config=/etc/otelcol/config.yaml"]
+    environment:
+      TRUCKCAR_ENVIRONMENT: ${TRUCKCAR_ENVIRONMENT:-local}
+    volumes:
+      - ./docker/observability/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    depends_on:
+      - tempo
+    networks:
+      - truckcar-network
+    mem_limit: 256m
+    restart: unless-stopped
+
+  # Almacén de trazas que consulta Grafana (búsqueda por servicio, ruta, traceId). Sin puertos publicados.
+  tempo:
+    image: grafana/tempo:2.6.1
+    container_name: truckcar-tempo
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ./docker/observability/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo_data:/var/tempo
+    networks:
+      - truckcar-network
+    mem_limit: 512m
+    restart: unless-stopped
+
+  # Métricas de PgBouncer (SHOW POOLS/STATS/DATABASES) en formato Prometheus.
+  pgbouncer-exporter:
+    image: prometheuscommunity/pgbouncer-exporter:v0.10.2
+    container_name: truckcar-pgbouncer-exporter
+    command:
+      - --pgBouncer.connectionString=postgres://pgbouncer_stats:${TRUCKCAR_PGBOUNCER_STATS_PASSWORD:?Defina TRUCKCAR_PGBOUNCER_STATS_PASSWORD en .env (scripts/init-env.sh)}@pgbouncer:6432/pgbouncer?sslmode=disable
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+    networks:
+      - truckcar-network
+    mem_limit: 64m
+    restart: unless-stopped
+
+  # Prometheus: scrape de /actuator/prometheus por DNS (ver docker/observability/prometheus/prometheus.yml) y alertas
+  # base. Solo en 127.0.0.1 del host.
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: truckcar-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-lifecycle
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./docker/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./docker/observability/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    networks:
+      - truckcar-network
+    mem_limit: 512m
+    restart: unless-stopped
+
+  # Grafana con los datasources (Prometheus, Tempo) y los dashboards de TruckCar aprovisionados. Solo en 127.0.0.1.
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: truckcar-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: ${TRUCKCAR_GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${TRUCKCAR_GRAFANA_ADMIN_PASSWORD:?Defina TRUCKCAR_GRAFANA_ADMIN_PASSWORD en .env (scripts/init-env.sh)}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/truckcar-platform.json
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./docker/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - tempo
+    networks:
+      - truckcar-network
+    mem_limit: 256m
+    restart: unless-stopped
+
 networks:
   truckcar-network:
     name: truckcar-network
@@ -482,3 +591,6 @@ volumes:
   postgis_data:
   redis_data:
   object_storage_data:
+  tempo_data:
+  prometheus_data:
+  grafana_data:

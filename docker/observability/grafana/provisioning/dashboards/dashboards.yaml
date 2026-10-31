@@ -1,0 +1,12 @@
+# Dashboards de TruckCar: se cargan desde /var/lib/grafana/dashboards (docker/observability/grafana/dashboards).
+apiVersion: 1
+
+providers:
+  - name: truckcar
+    folder: TruckCar
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

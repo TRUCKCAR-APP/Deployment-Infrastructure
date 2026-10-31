@@ -1,0 +1,48 @@
+# OpenTelemetry Collector: recibe las trazas OTLP de los 9 servicios Spring (Micrometer Tracing + exportador OTLP) y
+# las envía a Tempo. Es el único punto que conocen los servicios (MANAGEMENT_OTLP_TRACING_ENDPOINT): cambiar de backend
+# (Tempo, Jaeger, AWS X-Ray, Azure Monitor) solo toca este archivo.
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+processors:
+  # Protege el contenedor ante picos: rechaza datos (los SDK reintentan) antes de quedarse sin memoria.
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 160
+    spike_limit_mib: 40
+  batch:
+    timeout: 2s
+    send_batch_size: 512
+  # Atributos comunes a todas las trazas.
+  resource:
+    attributes:
+      - key: deployment.environment
+        value: ${env:TRUCKCAR_ENVIRONMENT}
+        action: upsert
+
+exporters:
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  telemetry:
+    # Métricas propias del collector (spans recibidos, rechazados, exportados) para Prometheus.
+    metrics:
+      address: 0.0.0.0:8888
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp/tempo]

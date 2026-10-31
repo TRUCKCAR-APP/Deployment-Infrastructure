@@ -1,0 +1,51 @@
+# Alertas base de TruckCar. En la nube se enrutan con Alertmanager (o Amazon Managed Prometheus / Azure Monitor).
+groups:
+  - name: truckcar-availability
+    rules:
+      - alert: TruckCarServiceDown
+        expr: up{job="truckcar-services"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.service }} ({{ $labels.instance }}) no responde al scrape"
+
+      - alert: TruckCarHttp5xxRate
+        expr: |
+          sum by (service) (rate(http_server_requests_seconds_count{status=~"5.."}[5m]))
+            / sum by (service) (rate(http_server_requests_seconds_count[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.service }}: más del 5 % de respuestas 5xx"
+
+  - name: truckcar-ai
+    rules:
+      - alert: TruckCarAiFallbackRateHigh
+        expr: |
+          sum by (component) (rate(truckcar_ai_fallback_total[10m]))
+            / sum by (component) (rate(truckcar_ai_requests_total[10m])) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.component }}: más de la mitad de las decisiones usan el fallback"
+
+  - name: truckcar-data
+    rules:
+      - alert: TruckCarPgBouncerClientsWaiting
+        expr: sum(pgbouncer_pools_client_waiting_connections) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Hay clientes esperando conexión en PgBouncer: el pool de PostgreSQL está saturado"
+
+      - alert: TruckCarKafkaConsumerLag
+        expr: max by (service, client_id) (kafka_consumer_fetch_manager_records_lag_max) > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.service }}: el consumidor {{ $labels.client_id }} acumula más de 1000 registros de lag"

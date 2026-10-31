@@ -1,0 +1,81 @@
+# Prometheus: scrape de /actuator/prometheus en la red interna truckcar-network. Los servicios se descubren por DNS
+# (registro A del nombre del servicio en Docker), así que cada réplica de fleets-drivers (--scale) es un target propio.
+# Ninguno de estos endpoints se publica: el api-gateway no enruta /actuator/** y su actuator escucha en :8090.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    platform: truckcar
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+scrape_configs:
+  - job_name: truckcar-services
+    metrics_path: /actuator/prometheus
+    dns_sd_configs:
+      - names: [api-gateway]
+        type: A
+        port: 8090
+        refresh_interval: 15s
+      - names: [user-identity]
+        type: A
+        port: 8080
+        refresh_interval: 15s
+      - names: [fleets-drivers]
+        type: A
+        port: 8081
+        refresh_interval: 15s
+      - names: [community-alerts]
+        type: A
+        port: 8082
+        refresh_interval: 15s
+      - names: [load-allocation]
+        type: A
+        port: 8083
+        refresh_interval: 15s
+      - names: [routing-restrictions]
+        type: A
+        port: 8084
+        refresh_interval: 15s
+      - names: [ai-fleet-allocation]
+        type: A
+        port: 8085
+        refresh_interval: 15s
+      - names: [route-ai-agent]
+        type: A
+        port: 8086
+        refresh_interval: 15s
+      - names: [notifications]
+        type: A
+        port: 8087
+        refresh_interval: 15s
+    relabel_configs:
+      # service="load-allocation" (nombre DNS); instance queda como IP:puerto de cada réplica.
+      - source_labels: [__meta_dns_name]
+        target_label: service
+
+  # Pools de PgBouncer (conexiones de cliente activas/en espera, conexiones reales a PostgreSQL).
+  - job_name: pgbouncer
+    static_configs:
+      - targets: [pgbouncer-exporter:9127]
+        labels:
+          service: pgbouncer
+
+  - job_name: otel-collector
+    static_configs:
+      - targets: [otel-collector:8888]
+        labels:
+          service: otel-collector
+
+  - job_name: tempo
+    static_configs:
+      - targets: [tempo:3200]
+        labels:
+          service: tempo
+
+  - job_name: prometheus
+    static_configs:
+      - targets: [localhost:9090]
+        labels:
+          service: prometheus
