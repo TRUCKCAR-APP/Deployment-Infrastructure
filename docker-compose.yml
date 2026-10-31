@@ -13,9 +13,10 @@
 #   - Puertos publicados: 8000 (api-gateway) y 5500 (frontend). PostgreSQL, Kafka y Redis
 #     solo escuchan en 127.0.0.1 del host, para herramientas de desarrollo y pruebas locales.
 #
-# Variables (archivo .env junto a este compose, no versionar):
-#   TRUCKCAR_JWT_SECRET   obligatoria: Base64 de >= 256 bits, compartida por User-Identity,
-#                         api-gateway y Notifications.
+# Variables (archivo .env junto a este compose, no versionar; scripts/init-env.sh lo genera con secretos aleatorios):
+#   Este archivo no contiene credenciales: las contraseñas de PostgreSQL (administrador y un rol por servicio), S3,
+#   RabbitMQ, PgBouncer, Grafana y el TRUCKCAR_JWT_SECRET son obligatorias y compose no arranca sin ellas.
+#   La lista completa y su equivalente en AWS Secrets Manager / Azure Key Vault está en .env.example.
 #   AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_KEY   opcionales (Route-AI-agent); sin ellas la
 #                         interpretación de alertas usa el fallback por reglas.
 #
@@ -64,7 +65,7 @@ services:
     environment:
       POSTGRES_DB: truckcar_db
       POSTGRES_USER: truckcar_admin
-      POSTGRES_PASSWORD: truckcar_password
+      POSTGRES_PASSWORD: ${TRUCKCAR_DB_ADMIN_PASSWORD:?Defina TRUCKCAR_DB_ADMIN_PASSWORD en .env (scripts/init-env.sh)}
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
@@ -80,7 +81,8 @@ services:
     restart: unless-stopped
 
   # Crea un rol y un esquema por servicio y mueve a cada esquema las tablas que vivían en public (idempotente:
-  # corre en cada arranque y termina). Las contraseñas de desarrollo se pueden sobrescribir en .env.
+  # corre en cada arranque y termina). Cada contraseña se aplica al crear el rol (base nueva); rotarla es un
+  # ALTER ROLE manual (ver README).
   db-init:
     image: postgis/postgis:16-3.4
     container_name: truckcar-db-init
@@ -90,7 +92,7 @@ services:
     networks:
       - truckcar-network
     environment:
-      PGPASSWORD: truckcar_password
+      PGPASSWORD: ${TRUCKCAR_DB_ADMIN_PASSWORD:?Defina TRUCKCAR_DB_ADMIN_PASSWORD en .env (scripts/init-env.sh)}
     volumes:
       - ./docker/postgres/init-service-schemas.sql:/sql/init-service-schemas.sql:ro
     command:
@@ -99,14 +101,14 @@ services:
       - --username=truckcar_admin
       - --dbname=truckcar_db
       - --quiet
-      - --set=pw_user_identity=${TRUCKCAR_DB_PASSWORD_USER_IDENTITY:-user_identity_dev}
-      - --set=pw_load_allocation=${TRUCKCAR_DB_PASSWORD_LOAD_ALLOCATION:-load_allocation_dev}
-      - --set=pw_fleets_drivers=${TRUCKCAR_DB_PASSWORD_FLEETS_DRIVERS:-fleets_drivers_dev}
-      - --set=pw_community_alerts=${TRUCKCAR_DB_PASSWORD_COMMUNITY_ALERTS:-community_alerts_dev}
-      - --set=pw_routing_restrictions=${TRUCKCAR_DB_PASSWORD_ROUTING_RESTRICTIONS:-routing_restrictions_dev}
-      - --set=pw_fleet_allocation=${TRUCKCAR_DB_PASSWORD_FLEET_ALLOCATION:-fleet_allocation_dev}
-      - --set=pw_route_ai_agent=${TRUCKCAR_DB_PASSWORD_ROUTE_AI_AGENT:-route_ai_agent_dev}
-      - --set=pw_notifications=${TRUCKCAR_DB_PASSWORD_NOTIFICATIONS:-notifications_dev}
+      - --set=pw_user_identity=${TRUCKCAR_DB_PASSWORD_USER_IDENTITY:?Defina TRUCKCAR_DB_PASSWORD_USER_IDENTITY en .env (scripts/init-env.sh)}
+      - --set=pw_load_allocation=${TRUCKCAR_DB_PASSWORD_LOAD_ALLOCATION:?Defina TRUCKCAR_DB_PASSWORD_LOAD_ALLOCATION en .env (scripts/init-env.sh)}
+      - --set=pw_fleets_drivers=${TRUCKCAR_DB_PASSWORD_FLEETS_DRIVERS:?Defina TRUCKCAR_DB_PASSWORD_FLEETS_DRIVERS en .env (scripts/init-env.sh)}
+      - --set=pw_community_alerts=${TRUCKCAR_DB_PASSWORD_COMMUNITY_ALERTS:?Defina TRUCKCAR_DB_PASSWORD_COMMUNITY_ALERTS en .env (scripts/init-env.sh)}
+      - --set=pw_routing_restrictions=${TRUCKCAR_DB_PASSWORD_ROUTING_RESTRICTIONS:?Defina TRUCKCAR_DB_PASSWORD_ROUTING_RESTRICTIONS en .env (scripts/init-env.sh)}
+      - --set=pw_fleet_allocation=${TRUCKCAR_DB_PASSWORD_FLEET_ALLOCATION:?Defina TRUCKCAR_DB_PASSWORD_FLEET_ALLOCATION en .env (scripts/init-env.sh)}
+      - --set=pw_route_ai_agent=${TRUCKCAR_DB_PASSWORD_ROUTE_AI_AGENT:?Defina TRUCKCAR_DB_PASSWORD_ROUTE_AI_AGENT en .env (scripts/init-env.sh)}
+      - --set=pw_notifications=${TRUCKCAR_DB_PASSWORD_NOTIFICATIONS:?Defina TRUCKCAR_DB_PASSWORD_NOTIFICATIONS en .env (scripts/init-env.sh)}
       - --file=/sql/init-service-schemas.sql
     restart: "no"
 
@@ -122,7 +124,7 @@ services:
       - truckcar-network
     environment:
       PGBOUNCER_AUTH_USER: truckcar_admin
-      PGBOUNCER_AUTH_PASSWORD: truckcar_password
+      PGBOUNCER_AUTH_PASSWORD: ${TRUCKCAR_DB_ADMIN_PASSWORD:?Defina TRUCKCAR_DB_ADMIN_PASSWORD en .env (scripts/init-env.sh)}
     volumes:
       - ./docker/pgbouncer/pgbouncer.ini:/etc/pgbouncer-truckcar/pgbouncer.ini:ro
     # userlist.txt solo con el usuario de auth_query; las contraseñas de los servicios las resuelve PostgreSQL.
@@ -148,8 +150,8 @@ services:
     image: rustfs/rustfs:1.0.4
     container_name: truckcar-object-storage
     environment:
-      RUSTFS_ACCESS_KEY: ${TRUCKCAR_S3_ACCESS_KEY:-truckcar}
-      RUSTFS_SECRET_KEY: ${TRUCKCAR_S3_SECRET_KEY:-truckcar_s3_dev_secret}
+      RUSTFS_ACCESS_KEY: ${TRUCKCAR_S3_ACCESS_KEY:?Defina TRUCKCAR_S3_ACCESS_KEY en .env (scripts/init-env.sh)}
+      RUSTFS_SECRET_KEY: ${TRUCKCAR_S3_SECRET_KEY:?Defina TRUCKCAR_S3_SECRET_KEY en .env (scripts/init-env.sh)}
       RUSTFS_ADDRESS: ":9000"
       RUSTFS_VOLUMES: /data
     volumes:
@@ -263,7 +265,7 @@ services:
     container_name: truckcar-rabbitmq
     environment:
       RABBITMQ_DEFAULT_USER: ${TRUCKCAR_STOMP_RELAY_LOGIN:-truckcar}
-      RABBITMQ_DEFAULT_PASS: ${TRUCKCAR_STOMP_RELAY_PASSCODE:-truckcar_stomp}
+      RABBITMQ_DEFAULT_PASS: ${TRUCKCAR_STOMP_RELAY_PASSCODE:?Defina TRUCKCAR_STOMP_RELAY_PASSCODE en .env (scripts/init-env.sh)}
     command: ["sh", "-c", "rabbitmq-plugins enable --offline rabbitmq_stomp && exec docker-entrypoint.sh rabbitmq-server"]
     networks:
       - truckcar-network
@@ -289,10 +291,10 @@ services:
       <<: *spring-env
       # Rol propio: dueño solo del esquema user_identity (ver docker/postgres/init-service-schemas.sql).
       SPRING_DATASOURCE_USERNAME: user_identity
-      SPRING_DATASOURCE_PASSWORD: ${TRUCKCAR_DB_PASSWORD_USER_IDENTITY:-user_identity_dev}
+      SPRING_DATASOURCE_PASSWORD: ${TRUCKCAR_DB_PASSWORD_USER_IDENTITY:?Defina TRUCKCAR_DB_PASSWORD_USER_IDENTITY en .env (scripts/init-env.sh)}
       DB_HOST: postgis
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      TRUCKCAR_JWT_SECRET: ${TRUCKCAR_JWT_SECRET:?Defina TRUCKCAR_JWT_SECRET en .env (Base64 de 256 bits o más)}
+      TRUCKCAR_JWT_SECRET: ${TRUCKCAR_JWT_SECRET:?Defina TRUCKCAR_JWT_SECRET en .env (scripts/init-env.sh)}
       # ADMIN inicial (AdminBootstrap): solo se crea si no existe ningún ADMIN.
       TRUCKCAR_ADMIN_EMAIL: ${TRUCKCAR_ADMIN_EMAIL:-}
       TRUCKCAR_ADMIN_PASSWORD: ${TRUCKCAR_ADMIN_PASSWORD:-}
@@ -313,14 +315,14 @@ services:
       <<: *spring-env
       # Rol propio: dueño solo del esquema fleets_drivers (ver docker/postgres/init-service-schemas.sql).
       SPRING_DATASOURCE_USERNAME: fleets_drivers
-      SPRING_DATASOURCE_PASSWORD: ${TRUCKCAR_DB_PASSWORD_FLEETS_DRIVERS:-fleets_drivers_dev}
+      SPRING_DATASOURCE_PASSWORD: ${TRUCKCAR_DB_PASSWORD_FLEETS_DRIVERS:?Defina TRUCKCAR_DB_PASSWORD_FLEETS_DRIVERS en .env (scripts/init-env.sh)}
       SPRING_DATA_REDIS_HOST: redis
       # Telemetría: verifica con Load-Allocation la propiedad de una carga al suscribirse a /topic/trip.{loadId}.
       TRUCKCAR_SERVICES_LOAD_ALLOCATION_URL: ${TRUCKCAR_LOAD_ALLOCATION_URL:-http://load-allocation:8083}
       TRUCKCAR_STOMP_RELAY_ENABLED: "true"
       TRUCKCAR_STOMP_RELAY_HOST: rabbitmq
       TRUCKCAR_STOMP_RELAY_LOGIN: ${TRUCKCAR_STOMP_RELAY_LOGIN:-truckcar}
-      TRUCKCAR_STOMP_RELAY_PASSCODE: ${TRUCKCAR_STOMP_RELAY_PASSCODE:-truckcar_stomp}
+      TRUCKCAR_STOMP_RELAY_PASSCODE: ${TRUCKCAR_STOMP_RELAY_PASSCODE:?Defina TRUCKCAR_STOMP_RELAY_PASSCODE en .env (scripts/init-env.sh)}
 
   community-alerts:
     <<: *spring-service
@@ -331,7 +333,7 @@ services:
       <<: *spring-env
       # Rol propio: dueño solo del esquema community_alerts (ver docker/postgres/init-service-schemas.sql).
       SPRING_DATASOURCE_USERNAME: community_alerts
-      SPRING_DATASOURCE_PASSWORD: ${TRUCKCAR_DB_PASSWORD_COMMUNITY_ALERTS:-community_alerts_dev}
+      SPRING_DATASOURCE_PASSWORD: ${TRUCKCAR_DB_PASSWORD_COMMUNITY_ALERTS:?Defina TRUCKCAR_DB_PASSWORD_COMMUNITY_ALERTS en .env (scripts/init-env.sh)}
 
   load-allocation:
     <<: *spring-service
@@ -347,13 +349,13 @@ services:
       <<: *spring-env
       # Rol propio: dueño solo del esquema load_allocation (ver docker/postgres/init-service-schemas.sql).
       SPRING_DATASOURCE_USERNAME: load_allocation
-      SPRING_DATASOURCE_PASSWORD: ${TRUCKCAR_DB_PASSWORD_LOAD_ALLOCATION:-load_allocation_dev}
+      SPRING_DATASOURCE_PASSWORD: ${TRUCKCAR_DB_PASSWORD_LOAD_ALLOCATION:?Defina TRUCKCAR_DB_PASSWORD_LOAD_ALLOCATION en .env (scripts/init-env.sh)}
       TRUCKCAR_ASSIGNMENT_RESPONSE_TIMEOUT_MINUTES: ${TRUCKCAR_ASSIGNMENT_RESPONSE_TIMEOUT_MINUTES:-60}
       # Evidencias de entrega: API S3 interna y dirección pública con la que se firman las URLs de la PWA.
       TRUCKCAR_S3_ENDPOINT: http://object-storage:9000
       TRUCKCAR_S3_PUBLIC_ENDPOINT: ${TRUCKCAR_S3_PUBLIC_ENDPOINT:-http://localhost:5500}
-      TRUCKCAR_S3_ACCESS_KEY: ${TRUCKCAR_S3_ACCESS_KEY:-truckcar}
-      TRUCKCAR_S3_SECRET_KEY: ${TRUCKCAR_S3_SECRET_KEY:-truckcar_s3_dev_secret}
+      TRUCKCAR_S3_ACCESS_KEY: ${TRUCKCAR_S3_ACCESS_KEY:?Defina TRUCKCAR_S3_ACCESS_KEY en .env (scripts/init-env.sh)}
+      TRUCKCAR_S3_SECRET_KEY: ${TRUCKCAR_S3_SECRET_KEY:?Defina TRUCKCAR_S3_SECRET_KEY en .env (scripts/init-env.sh)}
 
   routing-restrictions:
     <<: *spring-service
@@ -364,7 +366,7 @@ services:
       <<: *spring-env
       # Rol propio: dueño solo del esquema routing_restrictions (ver docker/postgres/init-service-schemas.sql).
       SPRING_DATASOURCE_USERNAME: routing_restrictions
-      SPRING_DATASOURCE_PASSWORD: ${TRUCKCAR_DB_PASSWORD_ROUTING_RESTRICTIONS:-routing_restrictions_dev}
+      SPRING_DATASOURCE_PASSWORD: ${TRUCKCAR_DB_PASSWORD_ROUTING_RESTRICTIONS:?Defina TRUCKCAR_DB_PASSWORD_ROUTING_RESTRICTIONS en .env (scripts/init-env.sh)}
 
   ai-fleet-allocation:
     <<: *spring-service
@@ -375,7 +377,7 @@ services:
       <<: *spring-env
       # Rol propio: dueño solo del esquema fleet_allocation (ver docker/postgres/init-service-schemas.sql).
       SPRING_DATASOURCE_USERNAME: fleet_allocation
-      SPRING_DATASOURCE_PASSWORD: ${TRUCKCAR_DB_PASSWORD_FLEET_ALLOCATION:-fleet_allocation_dev}
+      SPRING_DATASOURCE_PASSWORD: ${TRUCKCAR_DB_PASSWORD_FLEET_ALLOCATION:?Defina TRUCKCAR_DB_PASSWORD_FLEET_ALLOCATION en .env (scripts/init-env.sh)}
       TRUCKCAR_SERVICES_LOAD_ALLOCATION_URL: ${TRUCKCAR_LOAD_ALLOCATION_URL:-http://load-allocation:8083}
       TRUCKCAR_SERVICES_FLEETS_DRIVERS_URL: ${TRUCKCAR_FLEETS_DRIVERS_URL:-http://fleets-drivers:8081}
 
@@ -388,7 +390,7 @@ services:
       <<: *spring-env
       # Rol propio: dueño solo del esquema route_ai_agent (ver docker/postgres/init-service-schemas.sql).
       SPRING_DATASOURCE_USERNAME: route_ai_agent
-      SPRING_DATASOURCE_PASSWORD: ${TRUCKCAR_DB_PASSWORD_ROUTE_AI_AGENT:-route_ai_agent_dev}
+      SPRING_DATASOURCE_PASSWORD: ${TRUCKCAR_DB_PASSWORD_ROUTE_AI_AGENT:?Defina TRUCKCAR_DB_PASSWORD_ROUTE_AI_AGENT en .env (scripts/init-env.sh)}
       TRUCKCAR_SERVICES_ALERTS_URL: ${TRUCKCAR_COMMUNITY_ALERTS_URL:-http://community-alerts:8082}
       TRUCKCAR_SERVICES_RESTRICTIONS_URL: ${TRUCKCAR_ROUTING_RESTRICTIONS_URL:-http://routing-restrictions:8084}
       # Se toman del entorno o de .env; nunca se escriben en este archivo.
@@ -404,8 +406,8 @@ services:
       <<: *spring-env
       # Rol propio: dueño solo del esquema notifications (ver docker/postgres/init-service-schemas.sql).
       SPRING_DATASOURCE_USERNAME: notifications
-      SPRING_DATASOURCE_PASSWORD: ${TRUCKCAR_DB_PASSWORD_NOTIFICATIONS:-notifications_dev}
-      TRUCKCAR_JWT_SECRET: ${TRUCKCAR_JWT_SECRET:?Defina TRUCKCAR_JWT_SECRET en .env (Base64 de 256 bits o más)}
+      SPRING_DATASOURCE_PASSWORD: ${TRUCKCAR_DB_PASSWORD_NOTIFICATIONS:?Defina TRUCKCAR_DB_PASSWORD_NOTIFICATIONS en .env (scripts/init-env.sh)}
+      TRUCKCAR_JWT_SECRET: ${TRUCKCAR_JWT_SECRET:?Defina TRUCKCAR_JWT_SECRET en .env (scripts/init-env.sh)}
       TRUCKCAR_NOTIFICATIONS_API_KEY: ${TRUCKCAR_NOTIFICATIONS_API_KEY:-}
 
   # ===========================================================================
@@ -436,7 +438,7 @@ services:
       - notifications
     environment:
       TZ: America/Bogota
-      TRUCKCAR_JWT_SECRET: ${TRUCKCAR_JWT_SECRET:?Defina TRUCKCAR_JWT_SECRET en .env (Base64 de 256 bits o más)}
+      TRUCKCAR_JWT_SECRET: ${TRUCKCAR_JWT_SECRET:?Defina TRUCKCAR_JWT_SECRET en .env (scripts/init-env.sh)}
       TRUCKCAR_USER_IDENTITY_URL: ${TRUCKCAR_USER_IDENTITY_URL:-http://user-identity:8080}
       # lb://: el gateway reparte peticiones y conexiones WebSocket entre todas las réplicas de fleets-drivers
       # (las IP salen del DNS de Docker). Para depurar desde el IDE se sigue pudiendo pasar una URL http://.
