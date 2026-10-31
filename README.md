@@ -119,6 +119,7 @@ Comprueba que los puertos internos (`:8080`–`:8087`) **no** respondan desde el
 | Variable | Obligatoria | Uso |
 |---|---|---|
 | `TRUCKCAR_JWT_SECRET` | sí | Secreto JWT en Base64 (≥ 256 bits) compartido por user-identity, api-gateway y notifications. Sin ella `docker compose` no arranca. |
+| `TRUCKCAR_ADMIN_EMAIL`, `TRUCKCAR_ADMIN_PASSWORD` | no | ADMIN inicial: user-identity lo crea al arrancar si no existe ningún ADMIN (contraseña de 12 a 72 caracteres). Sin ellas no se crea ninguno. |
 | `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_KEY` | no | Route-AI-agent. Sin ellas la interpretación de alertas con IA queda deshabilitada (el resto funciona). |
 | `TRUCKCAR_ASSIGNMENT_RESPONSE_TIMEOUT_MINUTES` | no | Minutos que tiene un conductor para responder una propuesta (por defecto 60). |
 | `TRUCKCAR_NOTIFICATIONS_API_KEY` | no | Habilita `POST /api/v1/notifications/send` con `X-API-KEY`. |
@@ -126,6 +127,8 @@ Comprueba que los puertos internos (`:8080`–`:8087`) **no** respondan desde el
 | `TRUCKCAR_<SERVICIO>_URL` | no | Redirige las llamadas a un servicio (ver desarrollo local). |
 
 Cambiar `TRUCKCAR_JWT_SECRET` invalida las sesiones abiertas: hay que volver a iniciar sesión.
+
+El access token dura 15 minutos y el frontend lo renueva solo con el refresh token (7 días, de un solo uso).
 
 ## Desarrollo local: un servicio desde el IDE
 
