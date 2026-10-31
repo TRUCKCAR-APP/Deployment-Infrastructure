@@ -120,7 +120,7 @@ Comprueba que los puertos internos (`:8080`–`:8087`) **no** respondan desde el
 |---|---|---|
 | `TRUCKCAR_JWT_SECRET` | sí | Secreto JWT en Base64 (≥ 256 bits) compartido por user-identity, api-gateway y notifications. Sin ella `docker compose` no arranca. |
 | `TRUCKCAR_ADMIN_EMAIL`, `TRUCKCAR_ADMIN_PASSWORD` | no | ADMIN inicial: user-identity lo crea al arrancar si no existe ningún ADMIN (contraseña de 12 a 72 caracteres). Sin ellas no se crea ninguno. |
-| `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_KEY` | no | Route-AI-agent. Sin ellas la interpretación de alertas con IA queda deshabilitada (el resto funciona). |
+| `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_KEY` | no | Route-AI-agent. Sin ellas (o si Azure falla, tarda más de 4 s o responde 429) las alertas se interpretan por reglas de palabras clave y ninguna se pierde. |
 | `TRUCKCAR_ASSIGNMENT_RESPONSE_TIMEOUT_MINUTES` | no | Minutos que tiene un conductor para responder una propuesta (por defecto 60). |
 | `TRUCKCAR_NOTIFICATIONS_API_KEY` | no | Habilita `POST /api/v1/notifications/send` con `X-API-KEY`. |
 | `TRUCKCAR_FRONTEND_DIR` | no | Carpeta del frontend si no es `./truckcar-frontend`. |

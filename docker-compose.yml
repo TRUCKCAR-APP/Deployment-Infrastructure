@@ -17,7 +17,7 @@
 #   TRUCKCAR_JWT_SECRET   obligatoria: Base64 de >= 256 bits, compartida por User-Identity,
 #                         api-gateway y Notifications.
 #   AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_KEY   opcionales (Route-AI-agent); sin ellas la
-#                         interpretación de alertas con IA queda deshabilitada.
+#                         interpretación de alertas usa el fallback por reglas.
 #
 # No ejecutar a la vez los microservicios con mvnw en el host: compartirían los grupos de
 # consumo de Kafka con los contenedores y se repartirían los eventos.
@@ -43,6 +43,11 @@ x-spring-env: &spring-env
   SPRING_DATASOURCE_URL: jdbc:postgresql://postgis:5432/truckcar_db
   SPRING_DATASOURCE_USERNAME: truckcar_admin
   SPRING_DATASOURCE_PASSWORD: truckcar_password
+  # truckcar_db acepta 100 conexiones y la comparten todas las instancias: con el pool por defecto (10) el stack
+  # ocupaba 82 y una réplica más o una suite de tests desde el host agotaba la base. 5 por instancia bastan para la
+  # carga de cada servicio; en producción va PgBouncer delante de PostgreSQL.
+  SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "5"
+  SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: "1"
   SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
   TZ: America/Bogota
 
@@ -133,7 +138,12 @@ services:
           truckcar.notifications.sent \
           truckcar.notifications.failed \
           truckcar.events.load-allocation.DLT \
-          truckcar.events.road-restrictions.DLT; do
+          truckcar.events.road-restrictions.DLT \
+          truckcar.events.road-alerts.DLT \
+          truckcar.events.route-requests.DLT \
+          truckcar.events.vehicle-status.DLT \
+          truckcar.events.fleet-allocation-results.DLT \
+          truckcar.events.assignment-notifications.DLT; do
           /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 \
             --create --if-not-exists --topic "$$topic" --partitions 3 --replication-factor 1
         done
@@ -309,7 +319,9 @@ services:
       TZ: America/Bogota
       TRUCKCAR_JWT_SECRET: ${TRUCKCAR_JWT_SECRET:?Defina TRUCKCAR_JWT_SECRET en .env (Base64 de 256 bits o más)}
       TRUCKCAR_USER_IDENTITY_URL: ${TRUCKCAR_USER_IDENTITY_URL:-http://user-identity:8080}
-      TRUCKCAR_FLEETS_DRIVERS_URL: ${TRUCKCAR_FLEETS_DRIVERS_URL:-http://fleets-drivers:8081}
+      # lb://: el gateway reparte peticiones y conexiones WebSocket entre todas las réplicas de fleets-drivers
+      # (las IP salen del DNS de Docker). Para depurar desde el IDE se sigue pudiendo pasar una URL http://.
+      TRUCKCAR_FLEETS_DRIVERS_URL: ${TRUCKCAR_FLEETS_DRIVERS_URL:-lb://fleets-drivers}
       TRUCKCAR_COMMUNITY_ALERTS_URL: ${TRUCKCAR_COMMUNITY_ALERTS_URL:-http://community-alerts:8082}
       TRUCKCAR_LOAD_ALLOCATION_URL: ${TRUCKCAR_LOAD_ALLOCATION_URL:-http://load-allocation:8083}
       TRUCKCAR_ROUTING_RESTRICTIONS_URL: ${TRUCKCAR_ROUTING_RESTRICTIONS_URL:-http://routing-restrictions:8084}
