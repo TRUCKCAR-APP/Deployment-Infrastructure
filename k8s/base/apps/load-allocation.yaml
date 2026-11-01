@@ -65,6 +65,13 @@ spec:
                   name: truckcar-secrets
                   key: s3-secret-key
                   optional: true
+            - name: TRUCKCAR_TRACKING_LINK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: truckcar-secrets
+                  key: tracking-link-secret
+            - name: TRUCKCAR_SERVICES_FLEETS_DRIVERS_URL
+              value: "http://fleets-drivers-api:8081"
           # Spring Boot activa los grupos de health liveness/readiness al detectar Kubernetes.
           startupProbe:
             httpGet:

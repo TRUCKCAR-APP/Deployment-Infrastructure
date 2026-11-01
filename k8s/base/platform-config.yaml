@@ -33,4 +33,6 @@ data:
   TRUCKCAR_CORS_ALLOWED_ORIGINS: https://truckcar.example.com
   TRUCKCAR_WEBSOCKET_ALLOWED_ORIGINS: https://truckcar.example.com
   TRUCKCAR_ADMIN_EMAIL: ""
+  # PWA que abre los enlaces públicos de seguimiento (?track=<token>).
+  TRUCKCAR_PUBLIC_APP_URL: https://truckcar.example.com/
   AZURE_OPENAI_ENDPOINT: ""

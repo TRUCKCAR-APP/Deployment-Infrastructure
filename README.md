@@ -117,6 +117,19 @@ flowchart LR
   (con sus imágenes) y alertas. Al reconectar se envían en lotes a `/api/v1/{fleets-drivers|loads|alerts}/sync/batch`;
   el backend los aplica en orden y sin duplicar (tabla `ingested_events`).
 
+## SOS y seguimiento público de envíos
+
+- **SOS**: `POST /api/v1/alerts/sos` (solo CONDUCTOR; el conductor sale del JWT). Community-Alerts guarda el SOS y su
+  evento en el outbox en la misma transacción y lo publica justo después del commit en `truckcar.events.sos`
+  (`alert.sos.triggered` / `alert.sos.acknowledged`), un tópico propio que Notifications consume en su contenedor de
+  alta prioridad (push `EMERGENCIA_SOS`). La torre lo ve en `GET /api/v1/alerts/sos` y lo atiende con
+  `PATCH /api/v1/alerts/sos/{id}/acknowledge`. Sin señal, la PWA lo encola (`alert.sos`) y sale primero al reconectar.
+- **Seguimiento público**: `POST /api/v1/loads/{loadId}/public-tracking-link` (GENERADOR dueño, COORDINADOR o ADMIN)
+  firma un token HMAC-SHA256 con `TRUCKCAR_TRACKING_LINK_SECRET`. Vence a las 48 h o 6 h después de la entrega, lo
+  que llegue primero. `GET /api/v1/loads/public-tracking/{token}` es la única ruta anónima de cargas en el gateway (solo
+  GET, sin `..` ni separadores codificados) y devuelve el estado y la posición en vivo (desde fleets-drivers) sin datos
+  personales. La PWA abre la vista con `?track=<token>` en `TRUCKCAR_PUBLIC_APP_URL`.
+
 ## Estructura
 
 ```
@@ -226,6 +239,8 @@ completa está en `.env.example`; las principales:
 | `TRUCKCAR_JWT_SECRET` | sí | Secreto JWT en Base64 (≥ 256 bits) compartido por user-identity, api-gateway y notifications. Sin ella `docker compose` no arranca. |
 | `TRUCKCAR_DB_ADMIN_PASSWORD`, `TRUCKCAR_DB_PASSWORD_<SERVICIO>` | sí | Administrador de PostgreSQL (db-init y PgBouncer) y rol de cada servicio. |
 | `TRUCKCAR_S3_SECRET_KEY`, `TRUCKCAR_STOMP_RELAY_PASSCODE`, `TRUCKCAR_PGBOUNCER_STATS_PASSWORD`, `TRUCKCAR_GRAFANA_ADMIN_PASSWORD` | sí | Almacenamiento de evidencias, RabbitMQ, métricas de PgBouncer y Grafana. |
+| `TRUCKCAR_TRACKING_LINK_SECRET` | sí | Clave HMAC de los enlaces públicos de seguimiento (Load-Allocation). Rotarla invalida los enlaces emitidos. |
+| `TRUCKCAR_PUBLIC_APP_URL` | no | PWA que abre los enlaces de seguimiento (`http://localhost:5500/` por defecto). |
 | `TRUCKCAR_TRACING_SAMPLING_PROBABILITY` | no | Fracción de peticiones trazadas (1.0 por defecto). |
 | `TRUCKCAR_ADMIN_EMAIL`, `TRUCKCAR_ADMIN_PASSWORD` | no | ADMIN inicial: user-identity lo crea al arrancar si no existe ningún ADMIN (contraseña de 12 a 72 caracteres). Sin ellas no se crea ninguno. |
 | `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_KEY` | no | Route-AI-agent. Sin ellas (o si Azure falla, tarda más de 4 s o responde 429) las alertas se interpretan por reglas de palabras clave y ninguna se pierde. |
