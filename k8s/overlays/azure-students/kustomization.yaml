@@ -58,7 +58,8 @@ patches:
         path: /spec/template/spec/containers/0/resources/requests/memory
         value: 384Mi
 
-# Imágenes desde GHCR (paquetes públicos de TRUCKCAR-APP, sin costo) en lugar de Azure Container Registry.
+# Imágenes desde GHCR en lugar de Azure Container Registry. Los paquetes de TRUCKCAR-APP hoy son PRIVADOS: el clúster
+# necesita un imagePullSecret o que se hagan públicos (k8s/README.md, "Acceso a las imágenes de GHCR").
 images:
   - name: truckcar.azurecr.io/api-gateway
     newName: ghcr.io/truckcar-app/api-gateway
