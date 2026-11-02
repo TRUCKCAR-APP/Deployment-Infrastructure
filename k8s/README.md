@@ -24,8 +24,10 @@ k8s/
 │   └── secrets/truckcar-secrets.example.yaml   plantilla para clústeres locales (no se aplica)
 └── overlays/
     ├── aws-eks/                    RDS, MSK, ElastiCache, Amazon MQ, S3 con IRSA, AWS Secrets Manager, ALB, ADOT
-    └── azure-aks/                  PostgreSQL Flexible Server, Event Hubs, Azure Cache for Redis, Key Vault,
-                                    Application Routing, almacenamiento S3 (RustFS) en el clúster
+    ├── azure-aks/                  PostgreSQL Flexible Server, Event Hubs, Azure Cache for Redis, Key Vault,
+    │                               Application Routing, almacenamiento S3 (RustFS) en el clúster
+    └── azure-students/             azure-aks recortado para Azure for Students: un nodo B-series, una réplica,
+                                    Kafka/Redis/RabbitMQ en el clúster, imágenes de GHCR (ver abajo)
 ```
 
 ## Decisiones
@@ -67,8 +69,64 @@ metrics-server (HPA) y un CNI con NetworkPolicy. El namespace del controlador de
    `db-init` es idempotente; en un pipeline GitOps conviene ejecutarlo como hook previo (PreSync en Argo CD,
    pre-upgrade en Helm) para que los esquemas existan antes de que arranquen los servicios.
 
-El workflow `platform.yml` valida en cada cambio que ambos overlays compilen con kustomize y cumplan los esquemas de
+El workflow `platform.yml` valida en cada cambio que los tres overlays compilen con kustomize y cumplan los esquemas de
 Kubernetes 1.30 y de los CRD de External Secrets (`kubeconform -strict`).
+
+## Azure for Students (100 USD de crédito)
+
+`overlays/azure-students` es `azure-aks` recortado para que el crédito alcance el semestre. La regla de oro: **el clúster
+y la base solo encendidos para trabajar o presentar.** Con 24/7 el crédito no llega al segundo mes.
+
+| Recurso | Qué se usa | Costo aproximado (verificar en la calculadora de Azure) |
+|---|---|---|
+| AKS | Plano de control en el nivel Free | 0 USD |
+| Nodo | 1 × Standard_B4ms (4 vCPU, 16 GiB), disco del SO de 32 GiB | ~0,17 USD/h: ~15 USD/mes con 90 h de uso, ~120 USD/mes encendido siempre |
+| PostgreSQL | Flexible Server Burstable B1ms, 32 GiB | Incluido en los servicios gratuitos de 12 meses (750 h/mes); si no, ~13 USD/mes |
+| Kafka, Redis, RabbitMQ | En el clúster (`messaging.yaml`), discos estándar de 4, 1 y 1 GiB | ~0,5 USD/mes de disco |
+| Evidencias (RustFS) | En el clúster, 8 GiB estándar | ~0,5 USD/mes |
+| Imágenes | GHCR (público) | 0 USD |
+| Key Vault | Estándar | Centavos |
+| Balanceador del Ingress | Standard Load Balancer + IP pública | ~20 USD/mes mientras exista (revisar si sigue cobrando con el clúster detenido) |
+| Azure OpenAI | Opcional | Sin clave, Route-AI usa las reglas y todo funciona |
+
+Por qué así:
+- **Event Hubs y Azure Cache for Redis no se pueden pausar** y cuestan ~38 USD/mes juntos. Además, el overlay
+  `azure-aks` aún no les configura SASL_SSL ni TLS (ver "Pendiente por entorno"). En el clúster, con el nodo detenido,
+  solo cuestan sus discos.
+- **B4ms y no B2ms:** son 9 JVM de Spring (384 Mi de request, hasta 768 Mi) más la mensajería. En 8 GiB caben las
+  requests, pero los límites no y el arranque de las 9 JVM en 2 vCPU tarda varios minutos. B2ms solo si el crédito
+  lo exige.
+- **PostgreSQL gestionado:** es lo único con estado valioso, tiene respaldos automáticos y el B1ms es gratuito el
+  primer año.
+- **Sin trazas:** el collector queda en 0 réplicas y los servicios no exportan; las métricas siguen en
+  `/actuator/prometheus` (Azure Monitor managed Prometheus tiene nivel gratuito).
+
+Creación (Azure CLI; revise cada opción con `--help`, cambian entre versiones):
+
+```bash
+az group create -n truckcar-rg -l eastus
+az aks create -g truckcar-rg -n truckcar --tier free --node-count 1 --node-vm-size Standard_B4ms   --node-osdisk-size 32 --network-plugin azure --network-plugin-mode overlay --network-policy azure   --enable-app-routing --enable-oidc-issuer --enable-workload-identity --generate-ssh-keys
+az postgres flexible-server create -g truckcar-rg -n truckcar-pg --tier Burstable --sku-name Standard_B1ms   --storage-size 32 --version 16
+# PostGIS hay que permitirlo en Flexible Server antes de que db-init cree las extensiones.
+az postgres flexible-server parameter set -g truckcar-rg -s truckcar-pg --name azure.extensions --value POSTGIS
+```
+
+Después: Key Vault con los secretos de `overlays/azure-aks/external-secrets.yaml`, External Secrets Operator (Helm) y
+`kubectl apply -k k8s/overlays/azure-students`.
+
+Apagar y encender (lo que más ahorra):
+
+```bash
+az aks stop  -g truckcar-rg -n truckcar        # nodos desasignados: deja de cobrar el cómputo
+az postgres flexible-server stop -g truckcar-rg -n truckcar-pg   # Azure la vuelve a encender sola a los 7 días
+az aks start -g truckcar-rg -n truckcar && az postgres flexible-server start -g truckcar-rg -n truckcar-pg
+```
+
+Ponga una alerta de presupuesto (Cost Management → Budgets) en 20, 50 y 80 USD.
+
+Validado con `kubectl kustomize` y `kubeconform -strict` (194 recursos válidos en los tres overlays). **No se probó en
+un clúster AKS real**: en especial los usuarios no root de Kafka (1000), Redis (999) y RabbitMQ (100) con Pod Security
+"restricted", y el disco `managed-csi` de los StatefulSets.
 
 ## Pendiente por entorno
 

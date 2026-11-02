@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: truckcar-platform
+data:
+  # Mensajería en el clúster (messaging.yaml), sin TLS ni SASL dentro de la red del namespace.
+  SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+  SPRING_DATA_REDIS_HOST: redis
+  TRUCKCAR_STOMP_RELAY_HOST: rabbitmq
+  # Sin exportar trazas: vacío desactiva el exportador OTLP de los servicios.
+  MANAGEMENT_OTLP_TRACING_ENDPOINT: ""
+  TRUCKCAR_TRACING_SAMPLING_PROBABILITY: "0"

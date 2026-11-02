@@ -1,0 +1,15 @@
+# Evidencias de entrega: 8 Gi en disco estándar (managed-csi) en lugar de 50 Gi premium.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: object-storage
+spec:
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: managed-csi
+        resources:
+          requests:
+            storage: 8Gi
