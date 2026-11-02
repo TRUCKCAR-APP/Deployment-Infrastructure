@@ -1,0 +1,92 @@
+# Azure for Students: el overlay azure-aks recortado para gastar el mínimo de los 100 USD de crédito.
+#  - Un solo nodo B-series (ver README): una réplica por servicio, HPA de 1 a 2 y requests de CPU y memoria más bajos.
+#  - PostgreSQL Flexible Server B1ms (incluido en los servicios gratuitos de 12 meses) se mantiene gestionado.
+#  - Kafka, Redis y RabbitMQ corren en el clúster (messaging.yaml) en lugar de Event Hubs y Azure Cache for Redis.
+#  - Sin exportar trazas (el collector queda en 0 réplicas); las métricas siguen en /actuator/prometheus.
+#  - El almacenamiento de evidencias pasa de 50 Gi premium a 8 Gi estándar.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../azure-aks
+  - messaging.yaml
+patches:
+  - path: platform-config.yaml
+  - path: object-storage.yaml
+  # Una réplica de los componentes que en base tienen dos.
+  - target:
+      kind: Deployment
+      name: ^(api-gateway|fleets-drivers|frontend|pgbouncer)$
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+  - target:
+      kind: Deployment
+      name: otel-collector
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 0
+  # Autoescalado de 1 a 2 réplicas: el nodo único no admite más.
+  - target:
+      kind: HorizontalPodAutoscaler
+    patch: |-
+      - op: replace
+        path: /spec/minReplicas
+        value: 1
+      - op: replace
+        path: /spec/maxReplicas
+        value: 2
+  # Con una sola réplica, minAvailable: 1 impediría drenar el nodo (actualizaciones de AKS, az aks stop).
+  - target:
+      kind: PodDisruptionBudget
+    patch: |-
+      - op: remove
+        path: /spec/minAvailable
+      - op: add
+        path: /spec/maxUnavailable
+        value: 1
+  # Servicios Spring: menos CPU reservada (la JVM arranca con ráfagas del nodo B-series) y memoria acotada.
+  - target:
+      kind: Deployment
+      name: ^(user-identity|api-gateway|fleets-drivers|community-alerts|load-allocation|routing-restrictions|ai-fleet-allocation|route-ai-agent|notifications)$
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: 100m
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: 384Mi
+
+# Imágenes desde GHCR (paquetes públicos de TRUCKCAR-APP, sin costo) en lugar de Azure Container Registry.
+images:
+  - name: truckcar.azurecr.io/api-gateway
+    newName: ghcr.io/truckcar-app/api-gateway
+    newTag: main
+  - name: truckcar.azurecr.io/user-identity
+    newName: ghcr.io/truckcar-app/user-identity
+    newTag: main
+  - name: truckcar.azurecr.io/fleets-drivers
+    newName: ghcr.io/truckcar-app/fleets-drivers
+    newTag: main
+  - name: truckcar.azurecr.io/community-alerts
+    newName: ghcr.io/truckcar-app/community-alerts
+    newTag: main
+  - name: truckcar.azurecr.io/load-allocation
+    newName: ghcr.io/truckcar-app/load-allocation
+    newTag: main
+  - name: truckcar.azurecr.io/routing-restrictions
+    newName: ghcr.io/truckcar-app/routing-restrictions
+    newTag: main
+  - name: truckcar.azurecr.io/ai-fleet-allocation
+    newName: ghcr.io/truckcar-app/ai-fleet-allocation
+    newTag: main
+  - name: truckcar.azurecr.io/route-ai-agent
+    newName: ghcr.io/truckcar-app/route-ai-agent
+    newTag: main
+  - name: truckcar.azurecr.io/notifications
+    newName: ghcr.io/truckcar-app/notifications
+    newTag: main
+  - name: truckcar.azurecr.io/truckcar-frontend
+    newName: ghcr.io/truckcar-app/truckcar-frontend
+    newTag: main
