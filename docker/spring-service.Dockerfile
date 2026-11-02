@@ -8,8 +8,9 @@ FROM maven:3.9.9-eclipse-temurin-21 AS build
 WORKDIR /src
 COPY pom.xml .
 COPY src ./src
-# Caché de dependencias compartida entre servicios y entre builds.
-RUN --mount=type=cache,target=/root/.m2 mvn -q -B package -DskipTests \
+# Caché de dependencias compartida entre servicios y entre builds. sharing=locked: los 9 servicios se construyen en
+# paralelo y, sin candado, dos Maven escribían a la vez el mismo .lastUpdated (FileNotFoundException intermitente en CI).
+RUN --mount=type=cache,target=/root/.m2,sharing=locked mvn -q -B package -DskipTests \
  && cp "$(ls target/*.jar | grep -v -- '-plain.jar' | head -n 1)" /app.jar
 
 FROM eclipse-temurin:21-jre
