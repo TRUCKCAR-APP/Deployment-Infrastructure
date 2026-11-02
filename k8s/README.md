@@ -84,7 +84,7 @@ y la base solo encendidos para trabajar o presentar.** Con 24/7 el crédito no l
 | PostgreSQL | Flexible Server Burstable B1ms, 32 GiB | Incluido en los servicios gratuitos de 12 meses (750 h/mes); si no, ~13 USD/mes |
 | Kafka, Redis, RabbitMQ | En el clúster (`messaging.yaml`), discos estándar de 4, 1 y 1 GiB | ~0,5 USD/mes de disco |
 | Evidencias (RustFS) | En el clúster, 8 GiB estándar | ~0,5 USD/mes |
-| Imágenes | GHCR (público) | 0 USD |
+| Imágenes | GHCR. Los paquetes son **privados**: hace falta un `imagePullSecret` o hacerlos públicos (ver abajo) | Públicos: 0 USD. Privados: cuentan contra la cuota de GitHub Packages de la organización (verificar en Billing) |
 | Key Vault | Estándar | Centavos |
 | Balanceador del Ingress | Standard Load Balancer + IP pública | ~20 USD/mes mientras exista (revisar si sigue cobrando con el clúster detenido) |
 | Azure OpenAI | Opcional | Sin clave, Route-AI usa las reglas y todo funciona |
@@ -100,6 +100,55 @@ Por qué así:
   primer año.
 - **Sin trazas:** el collector queda en 0 réplicas y los servicios no exportan; las métricas siguen en
   `/actuator/prometheus` (Azure Monitor managed Prometheus tiene nivel gratuito).
+
+### Acceso a las imágenes de GHCR
+
+Los paquetes `ghcr.io/truckcar-app/*` son **privados**: sin credenciales, el registro responde `unauthorized` y los
+pods quedan en `ImagePullBackOff`. Hay dos opciones.
+
+**Opción A · `imagePullSecret` con un token de solo lectura.**
+- **Token:** un token personal *classic* de GitHub con **solo** el permiso `read:packages`, con vencimiento, de una cuenta
+  con acceso a la organización. No da escritura ni acceso al código.
+- **Dónde vive:** el token **no se guarda en el repositorio**. Se pasa por variable de entorno al crear el Secret y, si se
+  quiere, se guarda en Key Vault.
+
+```bash
+# GHCR_USER y GHCR_TOKEN solo en la sesión; history -c o una terminal nueva al terminar.
+kubectl -n truckcar create secret docker-registry ghcr-pull \
+  --docker-server=ghcr.io --docker-username="$GHCR_USER" --docker-password="$GHCR_TOKEN"
+# Cada servicio usa su propia ServiceAccount (k8s/base/service-accounts.yaml):
+for sa in api-gateway user-identity fleets-drivers community-alerts load-allocation routing-restrictions \
+          ai-fleet-allocation route-ai-agent notifications frontend; do
+  kubectl -n truckcar patch serviceaccount "$sa" -p '{"imagePullSecrets":[{"name":"ghcr-pull"}]}'
+done
+kubectl -n truckcar rollout restart deployment
+```
+
+- **A favor:** las imágenes siguen privadas y la decisión es reversible.
+- **En contra:**
+  - El token vence y hay que rotarlo, y depende de una persona.
+  - Las descargas desde AKS de paquetes privados cuentan contra la cuota de transferencia de GitHub Packages de la
+    organización: unas 10 imágenes de ~200-300 MB por cada nodo nuevo o reiniciado. Verificar los límites del plan en
+    *Settings → Billing* de TRUCKCAR-APP.
+
+**Opción B · hacer públicos los paquetes** (en GitHub: *Package settings → Change visibility*, uno por paquete).
+- **A favor:**
+  - Sin token ni Secret en el clúster.
+  - Almacenamiento y descargas sin costo, cualquier nodo descarga sin configuración, y `docker compose pull` funciona
+    para todo el equipo.
+- **En contra:**
+  - Cualquiera puede descargar las imágenes.
+  - **Según la documentación de GitHub, un paquete público no se puede volver privado**: hay que borrarlo y volver a
+    publicarlo.
+- **Qué se expone:** nada que no sea ya público. Los repos de código de TRUCKCAR-APP son públicos y las imágenes solo
+  empaquetan ese código y su `application.yml`. Revisado: sin credenciales, solo valores de desarrollo como `test` o
+  `guest` que se sobrescriben por variables de entorno.
+
+**Recomendación: opción B (paquetes públicos).**
+- El código ya es público y las imágenes no agregan nada sensible.
+- Evita un token personal que vence dentro del clúster de la sustentación, y evita gastar la cuota de Packages con cada
+  arranque del nodo.
+- **Si el equipo prefiere conservar la privacidad, o mientras se decide, use la opción A:** es reversible y la B no.
 
 Creación (Azure CLI; revise cada opción con `--help`, cambian entre versiones):
 
