@@ -3,6 +3,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: object-storage
+  namespace: truckcar
 spec:
   volumeClaimTemplates:
     - metadata:
