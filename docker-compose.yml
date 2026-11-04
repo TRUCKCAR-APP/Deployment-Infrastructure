@@ -80,7 +80,10 @@ services:
     networks:
       - truckcar-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U truckcar_admin -d truckcar_db && psql -U truckcar_admin -d truckcar_db -tAc \"SELECT 1 FROM pg_extension WHERE extname = 'postgis'\" | grep -q 1"]
+      # Por TCP (-h 127.0.0.1), no por el socket: en el primer arranque la imagen corre los scripts de init (crea
+      # PostGIS) en un servidor temporal que solo escucha en el socket. Por el socket el check pasaba contra ese
+      # servidor y db-init, que entra por la red, chocaba con el reinicio (exit 2 en la CI).
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U truckcar_admin -d truckcar_db && psql -h 127.0.0.1 -U truckcar_admin -d truckcar_db -tAc \"SELECT 1 FROM pg_extension WHERE extname = 'postgis'\" | grep -q 1"]
       interval: 5s
       timeout: 5s
       retries: 20
