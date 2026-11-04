@@ -5,6 +5,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: kafka
+  namespace: truckcar
   labels:
     app.kubernetes.io/name: kafka
 spec:
@@ -99,6 +100,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: kafka
+  namespace: truckcar
   labels:
     app.kubernetes.io/name: kafka
 spec:
@@ -113,6 +115,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: redis
+  namespace: truckcar
   labels:
     app.kubernetes.io/name: redis
 spec:
@@ -175,6 +178,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: redis
+  namespace: truckcar
   labels:
     app.kubernetes.io/name: redis
 spec:
@@ -189,6 +193,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: rabbitmq-plugins
+  namespace: truckcar
 data:
   enabled_plugins: |
     [rabbitmq_stomp].
@@ -197,6 +202,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: rabbitmq
+  namespace: truckcar
   labels:
     app.kubernetes.io/name: rabbitmq
 spec:
@@ -279,6 +285,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: rabbitmq
+  namespace: truckcar
   labels:
     app.kubernetes.io/name: rabbitmq
 spec:
@@ -294,6 +301,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-platform-to-messaging
+  namespace: truckcar
 spec:
   podSelector:
     matchExpressions:
