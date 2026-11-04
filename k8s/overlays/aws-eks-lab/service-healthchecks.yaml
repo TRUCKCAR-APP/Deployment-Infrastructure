@@ -1,0 +1,20 @@
+# Health check del ALB por servicio (el AWS Load Balancer Controller lee estas anotaciones del Service).
+# Sin ellas el ALB pide "/" en el puerto del tráfico: el api-gateway responde 404 en "/" y todos sus destinos quedarían
+# fuera de servicio (502/503 en toda la API).
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-gateway
+  annotations:
+    # Readiness del actuator, en el puerto de gestión (:8090), que el Ingress nunca expone.
+    alb.ingress.kubernetes.io/healthcheck-port: "8090"
+    alb.ingress.kubernetes.io/healthcheck-path: /actuator/health/readiness
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  annotations:
+    # nginx de la PWA: /healthz en el mismo puerto del tráfico (:8080).
+    alb.ingress.kubernetes.io/healthcheck-port: traffic-port
+    alb.ingress.kubernetes.io/healthcheck-path: /healthz

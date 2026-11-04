@@ -24,6 +24,8 @@ k8s/
 │   └── secrets/truckcar-secrets.example.yaml   plantilla para clústeres locales (no se aplica)
 └── overlays/
     ├── aws-eks/                    RDS, MSK, ElastiCache, Amazon MQ, S3 con IRSA, AWS Secrets Manager, ALB, ADOT
+    ├── aws-eks-lab/                AWS Academy Learner Lab: sin IRSA (LabRole del nodo), RDS, Kafka/Redis/RabbitMQ
+    │                               con STOMP en el clúster sobre EBS gp3, ALB con health checks (ver abajo)
     ├── azure-aks/                  PostgreSQL Flexible Server, Event Hubs, Azure Cache for Redis, Key Vault,
     │                               Application Routing, almacenamiento S3 (RustFS) en el clúster
     └── azure-students/             azure-aks recortado para Azure for Students: un nodo B-series, una réplica,
@@ -176,6 +178,66 @@ Ponga una alerta de presupuesto (Cost Management → Budgets) en 20, 50 y 80 USD
 Validado con `kubectl kustomize` y `kubeconform -strict` (194 recursos válidos en los tres overlays). **No se probó en
 un clúster AKS real**: en especial los usuarios no root de Kafka (1000), Redis (999) y RabbitMQ (100) con Pod Security
 "restricted", y el disco `managed-csi` de los StatefulSets.
+
+## AWS Academy Learner Lab (`overlays/aws-eks-lab`)
+
+Entorno de menos de 30 días en Amazon EKS con las restricciones del Learner Lab: **no se pueden crear roles de IAM ni
+proveedores OIDC**, así que no hay IRSA ni EKS Pod Identity.
+
+**Qué resuelve frente a `aws-eks`:**
+
+| Problema de `aws-eks` en el Learner Lab | Cómo lo resuelve `aws-eks-lab` |
+|---|---|
+| El ALB pide `/` y el api-gateway responde 404 en `/`: todos los destinos quedan fuera de servicio | Health check por Service: `:8090/actuator/health/readiness` en el gateway y `/healthz` en la PWA (`service-healthchecks.yaml`) |
+| Amazon MQ con RabbitMQ no habilita STOMP, que el relay del WebSocket necesita | RabbitMQ 3.13 con `rabbitmq_stomp` en el clúster (`:61613`, AMQP en `:5672`), junto con Kafka (KRaft) y Redis (`messaging.yaml`) |
+| No hay StorageClass para volúmenes propios | `gp3` con `ebs.csi.aws.com` y `WaitForFirstConsumer` (`storageclass.yaml`) |
+| El ALB (`target-type: ip`) llega desde IPs de la VPC, no desde un pod: las NetworkPolicies de base lo bloquearían | `ipBlock` con el CIDR de la VPC hacia `:8000` y `:8080` del borde, y `:8090` solo del gateway (`network-policies.yaml`) |
+| IRSA para S3, SNS, Polly y Bedrock | El SDK de AWS cae en `DefaultCredentialsProvider` y usa el **LabRole del nodo**: no se crean `s3-access-key` ni `s3-secret-key` |
+
+**Requisitos del clúster (sin probar en un Learner Lab real):**
+- **Nodos:** 2 × `t3.large` (35 pods y 8 GiB por nodo). En `t3.medium` caben como máximo 17 pods por nodo con el VPC CNI, y
+  4 GiB no alcanzan para las JVM.
+- **Rol:** el clúster y el nodegroup con el **LabRole** existente (`iam.serviceRoleARN` y `iam.instanceRoleARN` en la
+  configuración de eksctl).
+- **Credenciales desde los pods:** los pods deben poder leer las del nodo, así que el IMDSv2 necesita
+  `HttpPutResponseHopLimit` de 2. Compruébelo con
+  `aws ec2 describe-instances --query 'Reservations[].Instances[].MetadataOptions'`.
+- **Complementos:** `aws-ebs-csi-driver`, y `vpc-cni` con `enableNetworkPolicy: "true"`. Sin esa opción, las NetworkPolicies no se
+  aplican.
+- **AWS Load Balancer Controller** (Helm), con las credenciales del nodo.
+- **Antes de aplicar, en `overlays/aws-eks-lab`:**
+  - Reemplazar `REEMPLAZAR` (RDS, bucket y nombre DNS del ALB) en `platform-config.yaml`.
+  - Reemplazar `123456789012` por la cuenta en `kustomization.yaml`.
+  - Poner el CIDR de la VPC en `network-policies.yaml` (192.168.0.0/16 si eksctl creó la VPC).
+
+**Secret `truckcar-secrets` sin External Secrets** (se crea desde el `.env` local; no se guarda en el repositorio):
+
+```bash
+set -a; . ./.env; set +a
+kubectl create namespace truckcar --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n truckcar create secret generic truckcar-secrets \
+  --from-literal=jwt-secret="$TRUCKCAR_JWT_SECRET" \
+  --from-literal=admin-password="$TRUCKCAR_ADMIN_PASSWORD" \
+  --from-literal=db-admin-password="$TRUCKCAR_DB_ADMIN_PASSWORD" \
+  --from-literal=db-password-user-identity="$TRUCKCAR_DB_PASSWORD_USER_IDENTITY" \
+  --from-literal=db-password-fleets-drivers="$TRUCKCAR_DB_PASSWORD_FLEETS_DRIVERS" \
+  --from-literal=db-password-community-alerts="$TRUCKCAR_DB_PASSWORD_COMMUNITY_ALERTS" \
+  --from-literal=db-password-load-allocation="$TRUCKCAR_DB_PASSWORD_LOAD_ALLOCATION" \
+  --from-literal=db-password-routing-restrictions="$TRUCKCAR_DB_PASSWORD_ROUTING_RESTRICTIONS" \
+  --from-literal=db-password-fleet-allocation="$TRUCKCAR_DB_PASSWORD_FLEET_ALLOCATION" \
+  --from-literal=db-password-route-ai-agent="$TRUCKCAR_DB_PASSWORD_ROUTE_AI_AGENT" \
+  --from-literal=db-password-notifications="$TRUCKCAR_DB_PASSWORD_NOTIFICATIONS" \
+  --from-literal=pgbouncer-stats-password="$TRUCKCAR_PGBOUNCER_STATS_PASSWORD" \
+  --from-literal=rabbitmq-passcode="$TRUCKCAR_STOMP_RELAY_PASSCODE" \
+  --from-literal=tracking-link-secret="$TRUCKCAR_TRACKING_LINK_SECRET" \
+  --from-literal=notifications-api-key="$TRUCKCAR_NOTIFICATIONS_API_KEY"
+kubectl apply -k k8s/overlays/aws-eks-lab
+```
+
+**HTTPS:** el ALB escucha en HTTP:80 sobre su nombre DNS, porque el Learner Lab no trae dominio ni certificado de ACM.
+En el teléfono, la PWA **necesita HTTPS** para el GPS y el Service Worker. La forma más simple sin dominio es poner una
+distribución de **CloudFront** delante del ALB: da HTTPS con `*.cloudfront.net` y admite WebSocket. Si se usa,
+`TRUCKCAR_CORS_ALLOWED_ORIGINS`, `TRUCKCAR_WEBSOCKET_ALLOWED_ORIGINS` y `TRUCKCAR_PUBLIC_APP_URL` llevan ese dominio.
 
 ## Pendiente por entorno
 

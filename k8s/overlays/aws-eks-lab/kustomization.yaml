@@ -1,0 +1,102 @@
+# AWS Academy Learner Lab (entorno de menos de 30 días) sobre Amazon EKS:
+#  - Sin IRSA ni Pod Identity: S3, SNS, Polly y Bedrock usan el LabRole del nodo (DefaultCredentialsProvider).
+#  - RDS PostgreSQL gestionado; Kafka, Redis y RabbitMQ con STOMP dentro del clúster sobre EBS gp3.
+#  - ALB del AWS Load Balancer Controller con health checks por servicio y reglas de red para su CIDR.
+#  - Secret truckcar-secrets creado a mano desde .env (sin External Secrets): ver k8s/README.md.
+#  - Tamaño para 2 nodos t3.large: una réplica por servicio, HPA de 1 a 3, requests reducidos.
+# Se arma sobre base (no sobre aws-eks): ese overlay supone IRSA, MSK, ElastiCache y Amazon MQ.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# El namespace de base solo cubre los recursos de base: sin esta línea, lo que agrega el overlay (mensajería y reglas de
+# red) caería en "default". Los recursos de clúster (StorageClass) no lo reciben.
+namespace: truckcar
+resources:
+  - ../../base
+  - storageclass.yaml
+  - messaging.yaml
+  - network-policies.yaml
+patches:
+  - path: platform-config.yaml
+  - path: service-healthchecks.yaml
+  - target:
+      kind: Ingress
+      name: truckcar
+    path: ingress-patch.yaml
+  # Una réplica de los componentes que en base tienen dos.
+  - target:
+      kind: Deployment
+      name: ^(api-gateway|fleets-drivers|frontend|pgbouncer)$
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+  # Sin ADOT ni X-Ray: el collector de trazas no se despliega.
+  - target:
+      kind: Deployment
+      name: otel-collector
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 0
+  - target:
+      kind: HorizontalPodAutoscaler
+    patch: |-
+      - op: replace
+        path: /spec/minReplicas
+        value: 1
+      - op: replace
+        path: /spec/maxReplicas
+        value: 3
+  # Con una réplica, minAvailable: 1 impediría drenar un nodo (actualizaciones, cambio de tamaño del nodegroup).
+  - target:
+      kind: PodDisruptionBudget
+    patch: |-
+      - op: remove
+        path: /spec/minAvailable
+      - op: add
+        path: /spec/maxUnavailable
+        value: 1
+  # Servicios Spring: 100m de CPU reservada (2 t3.large tienen ~3,8 vCPU asignables) y memoria acotada.
+  - target:
+      kind: Deployment
+      name: ^(user-identity|api-gateway|fleets-drivers|community-alerts|load-allocation|routing-restrictions|ai-fleet-allocation|route-ai-agent|notifications)$
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: 100m
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: 384Mi
+
+# Imágenes en Amazon ECR (las publica el workflow de CI/CD). 123456789012 se reemplaza por la cuenta del Learner Lab.
+images:
+  - name: ghcr.io/truckcar-app/api-gateway
+    newName: 123456789012.dkr.ecr.us-east-1.amazonaws.com/truckcar/api-gateway
+    newTag: main
+  - name: ghcr.io/truckcar-app/user-identity
+    newName: 123456789012.dkr.ecr.us-east-1.amazonaws.com/truckcar/user-identity
+    newTag: main
+  - name: ghcr.io/truckcar-app/fleets-drivers
+    newName: 123456789012.dkr.ecr.us-east-1.amazonaws.com/truckcar/fleets-drivers
+    newTag: main
+  - name: ghcr.io/truckcar-app/community-alerts
+    newName: 123456789012.dkr.ecr.us-east-1.amazonaws.com/truckcar/community-alerts
+    newTag: main
+  - name: ghcr.io/truckcar-app/load-allocation
+    newName: 123456789012.dkr.ecr.us-east-1.amazonaws.com/truckcar/load-allocation
+    newTag: main
+  - name: ghcr.io/truckcar-app/routing-restrictions
+    newName: 123456789012.dkr.ecr.us-east-1.amazonaws.com/truckcar/routing-restrictions
+    newTag: main
+  - name: ghcr.io/truckcar-app/ai-fleet-allocation
+    newName: 123456789012.dkr.ecr.us-east-1.amazonaws.com/truckcar/ai-fleet-allocation
+    newTag: main
+  - name: ghcr.io/truckcar-app/route-ai-agent
+    newName: 123456789012.dkr.ecr.us-east-1.amazonaws.com/truckcar/route-ai-agent
+    newTag: main
+  - name: ghcr.io/truckcar-app/notifications
+    newName: 123456789012.dkr.ecr.us-east-1.amazonaws.com/truckcar/notifications
+    newTag: main
+  - name: ghcr.io/truckcar-app/truckcar-frontend
+    newName: 123456789012.dkr.ecr.us-east-1.amazonaws.com/truckcar/truckcar-frontend
+    newTag: main
