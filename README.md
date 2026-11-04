@@ -201,10 +201,35 @@ escuchen en `127.0.0.1`. Termina con código distinto de 0 si algo falla: es el 
 |---|---|---|
 | Cada servicio backend | `.github/workflows/ci.yml` | `mvn clean verify` con PostgreSQL/PostGIS, Kafka (y Redis en fleets-drivers) efímeros; en `main`, imagen en `ghcr.io/truckcar-app/<servicio>`; y el job **Plataforma** (abajo) con el servicio en su commit. |
 | truckcar-frontend | `.github/workflows/ci.yml` | Sintaxis de todos los scripts, ESLint y pruebas de `sw.js` y `js/offlineQueue.js` (IndexedDB en memoria); en `main`, imagen nginx de la PWA. |
-| Deployment-Infrastructure | `.github/workflows/platform.yml` | Validación estática (`docker compose config` y que no resuelva sin `.env`, `promtool`, `otelcol validate`, dashboards, `kustomize` + `kubeconform` de los dos overlays) y el **stack completo**: `docker compose up --build` con secretos generados, `verify-isolation.sh`, targets de Prometheus y trazas en Tempo. |
+| Deployment-Infrastructure | `.github/workflows/platform.yml` | Validación estática (`docker compose config` y que no resuelva sin `.env`, `promtool`, `otelcol validate`, dashboards, `kustomize` + `kubeconform` de los cuatro overlays) y el **stack completo**: `docker compose up --build` con secretos generados, `verify-isolation.sh`, targets de Prometheus y trazas en Tempo. |
 
 Los repos de TRUCKCAR-APP son públicos: el job del stack completo los clona sin credenciales y exige que pasen las 25
 comprobaciones de `verify-isolation.sh`.
+
+### Imágenes en Amazon ECR (AWS Academy Learner Lab)
+
+| Workflow | Cuándo | Qué hace |
+|---|---|---|
+| `.github/workflows/ecr-image.yml` (reutilizable) | Lo llama el job **ecr** del `ci.yml` de cada repo, en cada push a `main` | Construye una imagen (Dockerfile común de Spring o el propio de la PWA) y la publica como `<cuenta>.dkr.ecr.<región>.amazonaws.com/truckcar/<imagen>` con las etiquetas `:<commit>` y `:main`. La primera vez crea el repositorio de ECR (escaneo al publicar). |
+| `.github/workflows/ecr-all.yml` (manual) | Al iniciar un laboratorio nuevo, o si hubo pushes con las credenciales vencidas | Publica las 10 imágenes desde `main` de cada repo (o la referencia indicada) |
+
+**Credenciales:** el Learner Lab no permite crear el rol OIDC para GitHub Actions, así que se usan las credenciales
+temporales de la sesión.
+- **Dónde:** como **secretos de la organización** TRUCKCAR-APP (*Settings → Secrets and variables → Actions*), visibles para
+  los 11 repos: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` y `AWS_SESSION_TOKEN`, copiados de *AWS Details → AWS CLI*
+  del laboratorio.
+- **Región:** la variable de organización `AWS_REGION` (opcional, `us-east-1` por defecto).
+- **Vencen con cada sesión** (unas 4 horas): al empezar a trabajar se actualizan los tres secretos.
+  - Con las credenciales vencidas, el job **ecr** falla con un mensaje que lo explica: se actualizan y se vuelve a ejecutar.
+  - Sin secretos configurados, el job termina con un aviso y no publica.
+- **Desde la terminal**, con un token con el permiso `admin:org`:
+
+```bash
+gh secret set AWS_ACCESS_KEY_ID     --org TRUCKCAR-APP --visibility all --body "$AWS_ACCESS_KEY_ID"
+gh secret set AWS_SECRET_ACCESS_KEY --org TRUCKCAR-APP --visibility all --body "$AWS_SECRET_ACCESS_KEY"
+gh secret set AWS_SESSION_TOKEN     --org TRUCKCAR-APP --visibility all --body "$AWS_SESSION_TOKEN"
+gh workflow run "ECR all images" --repo TRUCKCAR-APP/Deployment-Infrastructure   # publicar las 10 de una vez
+```
 
 ## Secretos
 

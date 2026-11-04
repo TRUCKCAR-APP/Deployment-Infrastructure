@@ -1,0 +1,41 @@
+# Publica en Amazon ECR las 10 imágenes de TruckCar desde la rama main de cada repo (o la referencia que se indique).
+# Para el arranque de un laboratorio nuevo, o cuando las credenciales vencieron y hubo pushes sin publicar. En el día a
+# día, cada repo publica la suya con su job "ecr" (ecr-image.yml) en cada push a main.
+name: ECR all images
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Rama, etiqueta o commit que se construye en cada repo
+        type: string
+        default: main
+
+permissions:
+  contents: read
+
+jobs:
+  images:
+    name: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        include:
+          - { repo: User-Identity, image: user-identity, dockerfile: spring }
+          - { repo: api-gateway, image: api-gateway, dockerfile: spring }
+          - { repo: fleets-drivers, image: fleets-drivers, dockerfile: spring }
+          - { repo: Community-Alerts, image: community-alerts, dockerfile: spring }
+          - { repo: Load-Allocation, image: load-allocation, dockerfile: spring }
+          - { repo: Routing-Restrictions, image: routing-restrictions, dockerfile: spring }
+          - { repo: AI-powered-fleet-allocation, image: ai-fleet-allocation, dockerfile: spring }
+          - { repo: Route-AI-agent, image: route-ai-agent, dockerfile: spring }
+          - { repo: Notifications, image: notifications, dockerfile: spring }
+          - { repo: truckcar-frontend, image: truckcar-frontend, dockerfile: Dockerfile }
+    uses: ./.github/workflows/ecr-image.yml
+    with:
+      image: ${{ matrix.image }}
+      repository: TRUCKCAR-APP/${{ matrix.repo }}
+      ref: ${{ inputs.ref }}
+      dockerfile: ${{ matrix.dockerfile }}
+    secrets: inherit

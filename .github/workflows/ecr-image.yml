@@ -1,0 +1,164 @@
+# Construye una imagen de TruckCar y la publica en Amazon ECR (<cuenta>.dkr.ecr.<región>.amazonaws.com/truckcar/<imagen>)
+# con dos etiquetas: el commit construido y :main.
+#
+# La reutilizan los repos de los servicios (job "ecr" de su ci.yml, en cada push a main) y ecr-all.yml (las 10 de una
+# vez). Credenciales de AWS Academy Learner Lab: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY y AWS_SESSION_TOKEN como
+# secretos de la organización (llegan con "secrets: inherit"). Son temporales: se actualizan al iniciar cada sesión del
+# laboratorio. La región sale de la variable AWS_REGION (us-east-1 por defecto).
+#
+#   Sin secretos configurados   el job termina con un aviso y no publica (los repos sin AWS siguen en verde).
+#   Con secretos vencidos       el job falla con un mensaje explícito: hay que actualizarlos y volver a ejecutarlo.
+name: ECR image
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: Nombre de la imagen y del repositorio de ECR (sin el prefijo truckcar/), p. ej. fleets-drivers
+        type: string
+        required: true
+      repository:
+        description: Repo que se construye (owner/nombre). Vacío = el repo que llama
+        type: string
+        default: ""
+      ref:
+        description: Rama, etiqueta o commit que se construye. Vacío = el commit del evento
+        type: string
+        default: ""
+      dockerfile:
+        description: '"spring" = docker/spring-service.Dockerfile de este repo; si no, la ruta del Dockerfile en el repo construido'
+        type: string
+        default: spring
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        required: false
+      AWS_SECRET_ACCESS_KEY:
+        required: false
+      AWS_SESSION_TOKEN:
+        required: false
+    outputs:
+      image-uri:
+        description: Imagen publicada con la etiqueta del commit (vacío si no se publicó)
+        value: ${{ jobs.ecr.outputs.image-uri }}
+
+permissions:
+  contents: read
+
+jobs:
+  ecr:
+    name: Imagen ${{ inputs.image }} en Amazon ECR
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      ECR_REPOSITORY: truckcar/${{ inputs.image }}
+    outputs:
+      image-uri: ${{ steps.publish.outputs.image-uri }}
+    steps:
+      - name: Credenciales de AWS configuradas
+        id: creds
+        env:
+          ACCESS_KEY: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+        run: |
+          if [ -z "$ACCESS_KEY" ]; then
+            echo "::notice title=Sin credenciales de AWS::No hay secretos AWS_* en la organización ni en el repo: la imagen ${{ inputs.image }} no se publica en ECR."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            [ -n "$SESSION_TOKEN" ] || echo "::warning::Falta AWS_SESSION_TOKEN: las credenciales del Learner Lab son temporales y lo necesitan."
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.creds.outputs.present == 'true'
+        with:
+          repository: ${{ inputs.repository || github.repository }}
+          ref: ${{ inputs.ref }}
+
+      # Dockerfile común de los servicios Spring (Java 21, usuario sin privilegios, caché de Maven con candado).
+      - uses: actions/checkout@v4
+        if: steps.creds.outputs.present == 'true' && inputs.dockerfile == 'spring'
+        with:
+          repository: TRUCKCAR-APP/Deployment-Infrastructure
+          path: .infra
+          sparse-checkout: docker
+
+      - name: Commit que se construye
+        id: source
+        if: steps.creds.outputs.present == 'true'
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          if [ "${{ inputs.dockerfile }}" = "spring" ]; then
+            echo "file=.infra/docker/spring-service.Dockerfile" >> "$GITHUB_OUTPUT"
+          else
+            echo "file=${{ inputs.dockerfile }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Credenciales temporales del Learner Lab
+        id: aws
+        if: steps.creds.outputs.present == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Explicar credenciales vencidas
+        if: failure() && steps.aws.outcome == 'failure'
+        run: |
+          echo "::error title=Credenciales de AWS inválidas o vencidas::Las credenciales del Learner Lab duran una sesión. Copie las nuevas de 'AWS Details' en los secretos AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY y AWS_SESSION_TOKEN de la organización y vuelva a ejecutar este job."
+          exit 1
+
+      - name: Login en Amazon ECR
+        id: ecr
+        if: steps.creds.outputs.present == 'true'
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # El repositorio se crea la primera vez: mutable (:main se mueve), con escaneo de vulnerabilidades al publicar.
+      - name: Repositorio truckcar/${{ inputs.image }}
+        if: steps.creds.outputs.present == 'true'
+        run: |
+          if ! aws ecr describe-repositories --repository-names "$ECR_REPOSITORY" >/dev/null 2>&1; then
+            aws ecr create-repository --repository-name "$ECR_REPOSITORY" \
+              --image-tag-mutability MUTABLE \
+              --image-scanning-configuration scanOnPush=true \
+              --tags Key=project,Value=truckcar Key=environment,Value=aws-eks-lab >/dev/null
+            echo "::notice::Repositorio de ECR $ECR_REPOSITORY creado."
+          fi
+
+      - uses: docker/setup-buildx-action@v3
+        if: steps.creds.outputs.present == 'true'
+
+      - name: Construir y publicar
+        id: build
+        if: steps.creds.outputs.present == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ steps.source.outputs.file }}
+          push: true
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.source.outputs.sha }}
+            ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:main
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ inputs.repository || github.repository }}
+            org.opencontainers.image.revision=${{ steps.source.outputs.sha }}
+          cache-from: type=gha,scope=ecr-${{ inputs.image }}
+          cache-to: type=gha,mode=max,scope=ecr-${{ inputs.image }}
+
+      - name: Resumen
+        id: publish
+        if: steps.creds.outputs.present == 'true'
+        env:
+          IMAGE_URI: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.source.outputs.sha }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          echo "image-uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Imagen publicada en Amazon ECR"
+            echo
+            echo "| Imagen | Etiquetas | Digest |"
+            echo "|---|---|---|"
+            echo "| \`${{ env.ECR_REPOSITORY }}\` | \`${{ steps.source.outputs.sha }}\`, \`main\` | \`$DIGEST\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
