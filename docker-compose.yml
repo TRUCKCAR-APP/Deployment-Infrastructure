@@ -445,6 +445,7 @@ services:
     networks:
       - truckcar-network
     depends_on:
+      - redis
       - user-identity
       - fleets-drivers
       - community-alerts
@@ -471,6 +472,8 @@ services:
       TRUCKCAR_AI_FLEET_ALLOCATION_URL: ${TRUCKCAR_AI_FLEET_ALLOCATION_URL:-http://ai-fleet-allocation:8085}
       TRUCKCAR_ROUTE_AI_AGENT_URL: ${TRUCKCAR_ROUTE_AI_AGENT_URL:-http://route-ai-agent:8086}
       TRUCKCAR_NOTIFICATIONS_URL: ${TRUCKCAR_NOTIFICATIONS_URL:-http://notifications:8087}
+      # Tickets de un solo uso del WebSocket de telemetría (el JWT ya no viaja en la URL de /ws-telemetry).
+      SPRING_DATA_REDIS_HOST: redis
 
   # Frontend estático (repo truckcar-frontend; carpeta configurable con TRUCKCAR_FRONTEND_DIR) en http://localhost:5500.
   # El navegador consume el api-gateway en http://localhost:8000 (ver untitled/js/config.js).
