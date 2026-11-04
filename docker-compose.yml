@@ -445,14 +445,25 @@ services:
     networks:
       - truckcar-network
     depends_on:
-      - user-identity
-      - fleets-drivers
-      - community-alerts
-      - load-allocation
-      - routing-restrictions
-      - ai-fleet-allocation
-      - route-ai-agent
-      - notifications
+      # Los tickets del WebSocket viven en Redis: el gateway arranca con Redis ya sano.
+      redis:
+        condition: service_healthy
+      user-identity:
+        condition: service_started
+      fleets-drivers:
+        condition: service_started
+      community-alerts:
+        condition: service_started
+      load-allocation:
+        condition: service_started
+      routing-restrictions:
+        condition: service_started
+      ai-fleet-allocation:
+        condition: service_started
+      route-ai-agent:
+        condition: service_started
+      notifications:
+        condition: service_started
     environment:
       TZ: America/Bogota
       # Actuator (health, prometheus) en :8090, solo dentro de truckcar-network.
@@ -471,6 +482,9 @@ services:
       TRUCKCAR_AI_FLEET_ALLOCATION_URL: ${TRUCKCAR_AI_FLEET_ALLOCATION_URL:-http://ai-fleet-allocation:8085}
       TRUCKCAR_ROUTE_AI_AGENT_URL: ${TRUCKCAR_ROUTE_AI_AGENT_URL:-http://route-ai-agent:8086}
       TRUCKCAR_NOTIFICATIONS_URL: ${TRUCKCAR_NOTIFICATIONS_URL:-http://notifications:8087}
+      # Tickets de un solo uso del WebSocket de telemetría (el JWT ya no viaja en la URL de /ws-telemetry).
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
 
   # Frontend estático (repo truckcar-frontend; carpeta configurable con TRUCKCAR_FRONTEND_DIR) en http://localhost:5500.
   # El navegador consume el api-gateway en http://localhost:8000 (ver untitled/js/config.js).
