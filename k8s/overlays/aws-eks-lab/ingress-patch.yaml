@@ -1,0 +1,30 @@
+# Ingress de base (ingress-nginx) convertido a un ALB del AWS Load Balancer Controller. Se reemplazan todas las
+# anotaciones: las de nginx y cert-manager no aplican al ALB.
+#  - HTTP:80 sobre el nombre DNS del ALB: el Learner Lab no trae dominio ni certificado de ACM. Para HTTPS (la PWA lo
+#    necesita en el teléfono para el GPS y el Service Worker), ver k8s/README.md, "AWS Academy Learner Lab".
+#  - idle_timeout de 3600 s: las sesiones WebSocket de telemetría (latido cada 10 s) no se cortan antes de tiempo.
+#  - deregistration_delay de 30 s: al reemplazar un pod, las conexiones existentes tienen 30 s para cerrar.
+#  - Los health checks se definen por servicio en service-healthchecks.yaml.
+#  - Las etiquetas permiten encontrar el ALB al desmontar el entorno.
+- op: replace
+  path: /metadata/annotations
+  value:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+    alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=3600
+    alb.ingress.kubernetes.io/target-group-attributes: deregistration_delay.timeout_seconds=30
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: "15"
+    alb.ingress.kubernetes.io/healthy-threshold-count: "2"
+    alb.ingress.kubernetes.io/unhealthy-threshold-count: "3"
+    alb.ingress.kubernetes.io/success-codes: "200"
+    alb.ingress.kubernetes.io/tags: project=truckcar,environment=aws-eks-lab
+- op: replace
+  path: /spec/ingressClassName
+  value: alb
+# Sin certificado propio: el TLS de base (cert-manager) no aplica.
+- op: remove
+  path: /spec/tls
+# Sin dominio: las reglas responden a cualquier host (el nombre DNS que AWS asigna al ALB).
+- op: remove
+  path: /spec/rules/0/host

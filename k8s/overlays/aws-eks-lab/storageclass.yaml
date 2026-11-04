@@ -1,0 +1,15 @@
+# Discos EBS gp3 para la mensajería del clúster (Kafka, Redis, RabbitMQ). Requiere el complemento aws-ebs-csi-driver.
+# WaitForFirstConsumer: el volumen se crea en la zona del nodo donde cae el pod (un EBS no cruza zonas).
+# No se marca como clase por defecto: los StatefulSets la piden por nombre.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gp3
+provisioner: ebs.csi.aws.com
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Delete
+allowVolumeExpansion: true
+parameters:
+  type: gp3
+  encrypted: "true"
+  fsType: ext4

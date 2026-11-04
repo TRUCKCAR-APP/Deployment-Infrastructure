@@ -1,0 +1,44 @@
+# El ALB del AWS Load Balancer Controller (target-type: ip) llega a los pods desde las IPs de sus nodos en la VPC, no
+# desde un pod: la regla de base por namespace del controlador (allow-ingress-controller-to-edge) no lo cubre.
+# Estas reglas son aditivas: base sigue con default-deny para todo lo demás.
+#
+# CIDR por defecto de una VPC creada por eksctl: 192.168.0.0/16. Si el clúster usa otra VPC (por ejemplo la VPC por
+# defecto del Learner Lab, 172.31.0.0/16), cámbielo aquí:
+#   aws ec2 describe-vpcs --vpc-ids "$(aws eks describe-cluster --name truckcar-lab \
+#     --query cluster.resourcesVpcConfig.vpcId --output text)" --query 'Vpcs[0].CidrBlock' --output text
+#
+# Solo tienen efecto con la aplicación de NetworkPolicy activada en el VPC CNI (enableNetworkPolicy=true).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-alb-to-edge
+spec:
+  podSelector:
+    matchLabels:
+      truckcar.io/tier: edge
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 192.168.0.0/16
+      ports:
+        - port: 8000
+        - port: 8080
+---
+# Health check del ALB hacia el api-gateway: solo el puerto de gestión (:8090) y solo de ese pod. El resto del
+# actuator (/actuator/prometheus) queda alcanzable desde la VPC, nunca desde Internet (el ALB solo expone :80).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-alb-healthcheck-to-gateway
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: api-gateway
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 192.168.0.0/16
+      ports:
+        - port: 8090

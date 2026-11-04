@@ -1,0 +1,28 @@
+# Valores de AWS Academy Learner Lab. Los que dicen REEMPLAZAR se cambian por los de la cuenta antes de aplicar.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: truckcar-platform
+data:
+  # RDS PostgreSQL (con PostGIS); PgBouncer se conecta con TLS.
+  POSTGRES_HOST: truckcar-lab.REEMPLAZAR.us-east-1.rds.amazonaws.com
+  # Mensajería y caché dentro del clúster (messaging.yaml).
+  SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+  SPRING_DATA_REDIS_HOST: redis
+  TRUCKCAR_STOMP_RELAY_HOST: rabbitmq
+  # S3 nativo con el LabRole del nodo: sin endpoint propio ni claves (s3-access-key y s3-secret-key no se crean en el
+  # Secret; el SDK cae en DefaultCredentialsProvider y lee las credenciales del perfil de instancia).
+  TRUCKCAR_S3_BUCKET: truckcar-lab-pod-media-REEMPLAZAR
+  TRUCKCAR_S3_REGION: us-east-1
+  TRUCKCAR_S3_ENDPOINT: ""
+  TRUCKCAR_S3_PUBLIC_ENDPOINT: ""
+  TRUCKCAR_STORAGE_S3_PATH_STYLE: "false"
+  # Región por defecto del AWS SDK (Notifications: SNS y Polly).
+  AWS_REGION: us-east-1
+  # Sin ADOT ni X-Ray en el Learner Lab: no se exportan trazas (el collector queda en 0 réplicas).
+  MANAGEMENT_OTLP_TRACING_ENDPOINT: ""
+  TRUCKCAR_TRACING_SAMPLING_PROBABILITY: "0"
+  # Origen del navegador: el nombre DNS del ALB (kubectl -n truckcar get ingress truckcar) o el dominio de CloudFront.
+  TRUCKCAR_CORS_ALLOWED_ORIGINS: http://REEMPLAZAR.us-east-1.elb.amazonaws.com
+  TRUCKCAR_WEBSOCKET_ALLOWED_ORIGINS: http://REEMPLAZAR.us-east-1.elb.amazonaws.com
+  TRUCKCAR_PUBLIC_APP_URL: http://REEMPLAZAR.us-east-1.elb.amazonaws.com/
