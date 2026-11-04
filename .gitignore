@@ -10,6 +10,8 @@
 !/docker/
 !/scripts/
 !/k8s/
+# Documentación de arquitectura (escalamiento, estabilidad).
+!/docs/
 # CI de la plataforma (el resto de .github, p. ej. herramientas locales, no se versiona)
 !/.github/
 /.github/*
