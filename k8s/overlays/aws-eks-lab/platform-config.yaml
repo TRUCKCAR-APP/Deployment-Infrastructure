@@ -17,8 +17,12 @@ data:
   TRUCKCAR_S3_ENDPOINT: ""
   TRUCKCAR_S3_PUBLIC_ENDPOINT: ""
   TRUCKCAR_STORAGE_S3_PATH_STYLE: "false"
-  # Región por defecto del AWS SDK (Notifications: SNS y Polly).
+  # Región por defecto del AWS SDK (Notifications: SNS y Polly; Route-AI-agent: Bedrock).
   AWS_REGION: us-east-1
+  # Route-AI-agent interpreta las alertas con Amazon Bedrock (API Converse) y el LabRole del nodo. El modelo debe estar
+  # habilitado en la cuenta y la región; si Bedrock falla o limita la tasa, las reglas clasifican la alerta.
+  TRUCKCAR_AI_PROVIDER: "bedrock"
+  TRUCKCAR_BEDROCK_MODEL_ID: "amazon.nova-micro-v1:0"
   # Sin ADOT ni X-Ray en el Learner Lab: no se exportan trazas (el collector queda en 0 réplicas).
   MANAGEMENT_OTLP_TRACING_ENDPOINT: ""
   TRUCKCAR_TRACING_SAMPLING_PROBABILITY: "0"
