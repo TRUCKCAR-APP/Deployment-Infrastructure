@@ -142,7 +142,7 @@ Deployment-Infrastructure/          <- este repo
 │   └── observability/              otel-collector, Tempo, Prometheus (+ alertas) y Grafana (datasources y dashboards)
 ├── k8s/                            Kubernetes: base + overlays aws-eks y azure-aks (ver k8s/README.md)
 ├── .github/workflows/platform.yml  validación estática y prueba del stack completo (reutilizable por los servicios)
-├── scripts/                        clone-repos, init-env y verify-isolation (.sh y .ps1)
+├── scripts/                        clone-repos, init-env y verify-isolation (.sh y .ps1); teardown.sh (EKS)
 ├── .env.example                    todas las variables, con su clave en AWS Secrets Manager / Azure Key Vault
 ├── User-Identity/  api-gateway/  fleets-drivers/  ...   <- repos de servicios (no versionados aquí)
 └── truckcar-frontend/
@@ -253,6 +253,47 @@ sin `.env`, y los `application.yml` de los servicios no traen contraseñas por d
 `securityContext` restringido y HPA/PDB; Service **headless** de fleets-drivers para el balanceo DNS del WebSocket;
 ConfigMap de plataforma; Secret vía External Secrets; Ingress; NetworkPolicies equivalentes a `truckcar-network`;
 PgBouncer, el Job db-init y el otel-collector. Detalle y despliegue en [k8s/README.md](k8s/README.md).
+
+### Desmontaje en Amazon EKS (AWS Academy Learner Lab)
+
+Al terminar, desmonte con `scripts/teardown.sh` en lugar de borrar el clúster desde la consola. Si el clúster se borra
+primero, el ALB del Ingress y los discos EBS quedan huérfanos, y la VPC no se puede eliminar.
+
+```bash
+# 1. Credenciales vigentes del Learner Lab (Start Lab > AWS Details) y kubectl apuntando al clúster
+aws eks update-kubeconfig --name truckcar-cluster --region us-east-1
+
+# 2. Ver qué se haría, sin borrar nada
+./scripts/teardown.sh --dry-run
+
+# 3. Desmontar: pide escribir el nombre del clúster para confirmar (--yes la omite)
+./scripts/teardown.sh
+```
+
+El orden es estricto y cada paso se comprueba contra la API de AWS antes de seguir:
+
+1. **Ingress.** El AWS Load Balancer Controller borra el ALB y sus Security Groups. El script espera a que AWS ya no
+   tenga balanceadores con la etiqueta del clúster; si no desaparecen, se detiene sin tocar nada más.
+2. **StatefulSets y PVCs.** Primero los StatefulSets de Kafka, Redis y RabbitMQ, porque un PVC en uso no se borra.
+   Después los PVCs, cuyos discos EBS gp3 se eliminan (`reclaimPolicy: Delete`). El script espera a que no quede
+   ningún disco del namespace.
+3. **Pausa de 30 s** para las eliminaciones en segundo plano.
+4. **`eksctl delete cluster`:** nodegroups, clúster y el stack de la VPC.
+5. **Informe** de lo que no se borra: repositorios ECR `truckcar/*`, instancias RDS y buckets S3 con `truckcar` en
+   el nombre, y la distribución de CloudFront si se creó. Se imprimen los comandos para borrarlos a mano.
+
+Salvaguardas:
+- Se detiene si las credenciales vencieron, si el clúster no existe o si `kubectl` apunta a otro contexto.
+- Se configura con variables:
+
+  | Variable | Por defecto |
+  |---|---|
+  | `TRUCKCAR_CLUSTER_NAME` | `truckcar-cluster` |
+  | `AWS_REGION` | `us-east-1` |
+  | `TRUCKCAR_NAMESPACE` | `truckcar` |
+  | `TRUCKCAR_TEARDOWN_TIMEOUT` (segundos de espera por el ALB y los discos) | `300` |
+
+**Los datos de Kafka, Redis y RabbitMQ se pierden.** Los de RDS y S3 no se tocan.
 
 ## Variables (`.env`)
 
