@@ -7,6 +7,8 @@ data:
   SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
   SPRING_DATA_REDIS_HOST: redis
   TRUCKCAR_STOMP_RELAY_HOST: rabbitmq
-  # Sin exportar trazas: vacío desactiva el exportador OTLP de los servicios.
-  MANAGEMENT_OTLP_TRACING_ENDPOINT: ""
+  # Sin exportar trazas: tracing apagado. Un endpoint vacío no basta (Spring crea el exportador OTLP y el arranque
+  # falla con "Invalid endpoint"); null quita la clave de base.
+  MANAGEMENT_TRACING_ENABLED: "false"
+  MANAGEMENT_OTLP_TRACING_ENDPOINT: null
   TRUCKCAR_TRACING_SAMPLING_PROBABILITY: "0"
