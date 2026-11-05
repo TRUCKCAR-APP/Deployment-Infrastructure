@@ -42,6 +42,11 @@ BEGIN
         IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = svc.schema_name) THEN
             EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', svc.schema_name, svc.role_password);
         END IF;
+        -- RDS y Azure Flexible Server (PostgreSQL 16): el administrador no es superusuario y crear un rol solo le da
+        -- ADMIN OPTION; para darle el esquema y sus tablas necesita SET ROLE. Sin INHERIT: no hereda sus permisos.
+        IF NOT pg_has_role(current_user, svc.schema_name, 'SET') THEN
+            EXECUTE format('GRANT %I TO %I WITH SET TRUE, INHERIT FALSE', svc.schema_name, current_user);
+        END IF;
         EXECUTE format('CREATE SCHEMA IF NOT EXISTS %I AUTHORIZATION %I', svc.schema_name, svc.schema_name);
         EXECUTE format('ALTER SCHEMA %I OWNER TO %I', svc.schema_name, svc.schema_name);
         EXECUTE format('ALTER ROLE %I SET search_path = %I, public', svc.schema_name, svc.schema_name);
