@@ -13,6 +13,8 @@ data:
     [pgbouncer]
     listen_addr = 0.0.0.0
     listen_port = 6432
+    ;; Sin socket Unix: el sistema de archivos es de solo lectura y el exporter entra por TCP (127.0.0.1).
+    unix_socket_dir =
     pool_mode = transaction
     auth_type = scram-sha-256
     auth_file = /etc/pgbouncer-runtime/userlist.txt

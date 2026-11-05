@@ -23,8 +23,10 @@ data:
   # habilitado en la cuenta y la región; si Bedrock falla o limita la tasa, las reglas clasifican la alerta.
   TRUCKCAR_AI_PROVIDER: "bedrock"
   TRUCKCAR_BEDROCK_MODEL_ID: "amazon.nova-micro-v1:0"
-  # Sin ADOT ni X-Ray en el Learner Lab: no se exportan trazas (el collector queda en 0 réplicas).
-  MANAGEMENT_OTLP_TRACING_ENDPOINT: ""
+  # Sin ADOT ni X-Ray en el Learner Lab: tracing apagado (el collector queda en 0 réplicas). Un endpoint vacío no basta:
+  # Spring crea igual el exportador OTLP y el arranque falla con "Invalid endpoint"; null quita la clave de base.
+  MANAGEMENT_TRACING_ENABLED: "false"
+  MANAGEMENT_OTLP_TRACING_ENDPOINT: null
   TRUCKCAR_TRACING_SAMPLING_PROBABILITY: "0"
   # Origen del navegador: el nombre DNS del ALB (kubectl -n truckcar get ingress truckcar) o el dominio de CloudFront.
   TRUCKCAR_CORS_ALLOWED_ORIGINS: http://REEMPLAZAR.us-east-1.elb.amazonaws.com
