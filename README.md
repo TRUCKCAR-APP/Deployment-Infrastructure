@@ -28,6 +28,7 @@ flowchart LR
         pb[["pgbouncer :6432"]]
         pg[("postgis :5432")]
         kf[["kafka :29092"]]
+        rmq[["rabbitmq :61613 (STOMP)"]]
         rd[("redis :6379")]
         s3[("object-storage :9000")]
         otel[["otel-collector :4318"]]
@@ -37,11 +38,15 @@ flowchart LR
     end
 
     browser -- "localhost:5500" --> fe
-    browser -- "localhost:8000 (JWT)" --> gw
+    browser -- "localhost:8000 (JWT · WebSocket con ticket)" --> gw
     gw --> ui & fd & ca & la & rr & ai & ra & nt
+    gw -- "tickets del WebSocket" --> rd
+    fd -- "posición en vivo" --> rd
+    fd -- "relay STOMP" --> rmq
     ai --> la & fd
     ra --> ca & rr
     ui & fd & ca & la & rr & ai & ra & nt --> pb --> pg
+    ui & fd & ca & la & rr & ai & ra & nt <-. "eventos (outbox)" .-> kf
     fe -- "/pod-media/ (URL prefirmada)" --> s3
     la --> s3
     tools -. "127.0.0.1:5432 / 9092 / 6379" .-> pg & kf & rd
@@ -50,6 +55,9 @@ flowchart LR
     graf --> prom & tempo
     tools -. "127.0.0.1:3000 / 9090" .-> graf & prom
 ```
+
+El despliegue en AWS (EKS), el stack por capa, los eventos de Kafka y la telemetría en vivo están en
+[docs/arquitectura/ARQUITECTURA.md](docs/arquitectura/ARQUITECTURA.md).
 
 | Componente | Acceso desde el host | Dentro de `truckcar-network` |
 |---|---|---|
