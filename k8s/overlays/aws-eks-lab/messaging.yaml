@@ -183,8 +183,9 @@ spec:
               value: "3"
             - name: KAFKA_AUTO_CREATE_TOPICS_ENABLE
               value: "true"
+            # Subdirectorio del volumen: la raíz de un disco ext4 nuevo trae lost+found y Kafka la rechaza como partición.
             - name: KAFKA_LOG_DIRS
-              value: /var/lib/kafka/data
+              value: /var/lib/kafka/data/logs
             - name: KAFKA_LOG_RETENTION_HOURS
               value: "48"
             - name: KAFKA_HEAP_OPTS
