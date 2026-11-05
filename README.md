@@ -277,13 +277,18 @@ El orden es estricto y cada paso se comprueba contra la API de AWS antes de segu
 2. **StatefulSets y PVCs.** Primero los StatefulSets de Kafka, Redis y RabbitMQ, porque un PVC en uso no se borra.
    Después los PVCs, cuyos discos EBS gp3 se eliminan (`reclaimPolicy: Delete`). El script espera a que no quede
    ningún disco del namespace.
-3. **Pausa de 30 s** para las eliminaciones en segundo plano.
-4. **`eksctl delete cluster`:** nodegroups, clúster y el stack de la VPC.
-5. **Informe** de lo que no se borra: repositorios ECR `truckcar/*`, instancias RDS y buckets S3 con `truckcar` en
-   el nombre, y la distribución de CloudFront si se creó. Se imprimen los comandos para borrarlos a mano.
+3. **RDS dentro de la VPC del clúster.** Borra cada instancia sin snapshot final y espera a que desaparezca. Después
+   borra su grupo de subredes y sus Security Groups. Conserva el `default` de la VPC y los que creó eksctl, y reintenta
+   mientras AWS libera la interfaz de red de la base. Mientras existan, CloudFormation no puede borrar la VPC.
+4. **Pausa de 30 s** para las eliminaciones en segundo plano.
+5. **`eksctl delete cluster`:** nodegroups, clúster y el stack de la VPC.
+6. **Informe** de lo que no se borra: repositorios ECR `truckcar/*`, instancias RDS fuera de la VPC y buckets S3 con
+   `truckcar` en el nombre, y la distribución de CloudFront si se creó. Se imprimen los comandos para borrarlos a mano.
 
 Salvaguardas:
 - Se detiene si las credenciales vencieron, si el clúster no existe o si `kubectl` apunta a otro contexto.
+- Busca las instancias RDS de la VPC antes de borrar nada. Si alguna tiene protección contra borrado, se detiene sin
+  tocar nada e indica el comando para desactivarla. La confirmación nombra las instancias que se van a borrar.
 - Se configura con variables:
 
   | Variable | Por defecto |
@@ -291,9 +296,10 @@ Salvaguardas:
   | `TRUCKCAR_CLUSTER_NAME` | `truckcar-cluster` |
   | `AWS_REGION` | `us-east-1` |
   | `TRUCKCAR_NAMESPACE` | `truckcar` |
-  | `TRUCKCAR_TEARDOWN_TIMEOUT` (segundos de espera por el ALB y los discos) | `300` |
+  | `TRUCKCAR_TEARDOWN_TIMEOUT` (segundos de espera por el ALB, los discos y los Security Groups; RDS usa el waiter de la CLI, hasta 30 min) | `300` |
 
-**Los datos de Kafka, Redis y RabbitMQ se pierden.** Los de RDS y S3 no se tocan.
+**Se pierden los datos de Kafka, Redis, RabbitMQ y de la base RDS de la VPC del clúster, que se borra sin snapshot
+final.** Los buckets S3 y los repositorios ECR no se tocan.
 
 ## Variables (`.env`)
 
