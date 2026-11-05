@@ -1,0 +1,51 @@
+# Opcional, fuera de kustomization.yaml: HTTPS de prueba para el teléfono con un Quick Tunnel de Cloudflare (sin
+# cuenta), porque el Learner Lab no permite CloudFront. cloudflared abre una conexión saliente y publica
+# https://<aleatorio>.trycloudflare.com con certificado válido y WebSocket; el tráfico entra por el ALB como cualquier
+# otro. Reemplace REEMPLAZAR por el nombre DNS del ALB. La URL cambia si el pod se reinicia: solo para pruebas.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: truckcar-tunnel
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudflared
+  namespace: truckcar-tunnel
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: cloudflared}
+  template:
+    metadata:
+      labels: {app: cloudflared}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: cloudflared
+          image: cloudflare/cloudflared:2024.12.2
+          args:
+            - tunnel
+            - --no-autoupdate
+            - --metrics=0.0.0.0:2000
+            - --url=http://REEMPLAZAR.us-east-1.elb.amazonaws.com
+          ports:
+            - {name: metrics, containerPort: 2000}
+          livenessProbe:
+            httpGet: {path: /ready, port: metrics}
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            requests: {cpu: 20m, memory: 64Mi}
+            limits: {memory: 128Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}

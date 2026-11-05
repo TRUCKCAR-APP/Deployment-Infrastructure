@@ -259,9 +259,27 @@ kubectl apply -k k8s/overlays/aws-eks-lab
 ```
 
 **HTTPS:** el ALB escucha en HTTP:80 sobre su nombre DNS, porque el Learner Lab no trae dominio ni certificado de ACM.
-En el teléfono, la PWA **necesita HTTPS** para el GPS y el Service Worker. La forma más simple sin dominio es poner una
-distribución de **CloudFront** delante del ALB: da HTTPS con `*.cloudfront.net` y admite WebSocket. Si se usa,
-`TRUCKCAR_CORS_ALLOWED_ORIGINS`, `TRUCKCAR_WEBSOCKET_ALLOWED_ORIGINS` y `TRUCKCAR_PUBLIC_APP_URL` llevan ese dominio.
+En el teléfono, la PWA **necesita HTTPS** para el GPS y el Service Worker. El Learner Lab **no permite CloudFront**
+(`cloudfront:CreateDistribution` denegado), así que para pruebas se usa un Quick Tunnel de Cloudflare
+(`overlays/aws-eks-lab/optional/cloudflare-tunnel.yaml`): un pod `cloudflared` sin cuenta que publica
+`https://<aleatorio>.trycloudflare.com` con certificado válido y WebSocket, y que entra por el ALB.
+
+```bash
+# Con REEMPLAZAR cambiado por el nombre DNS del ALB:
+kubectl apply -f k8s/overlays/aws-eks-lab/optional/cloudflare-tunnel.yaml
+kubectl -n truckcar-tunnel logs deploy/cloudflared | grep -o 'https://[a-z0-9-]*\.trycloudflare\.com'
+```
+
+Esa URL se agrega a `TRUCKCAR_CORS_ALLOWED_ORIGINS` y `TRUCKCAR_WEBSOCKET_ALLOWED_ORIGINS` (listas separadas por
+comas, junto al ALB) y se pone en `TRUCKCAR_PUBLIC_APP_URL`. Después se aplica el overlay y se reinician los
+Deployments. **Limitaciones:**
+- el tráfico pasa por Cloudflare;
+- no tiene SLA;
+- la URL cambia si el pod se reinicia, y entonces hay que repetir el paso de los orígenes;
+- el túnel también responde por HTTP sin redirigir: hay que abrir la URL con `https://`.
+
+Con un dominio propio, lo correcto es un certificado de ACM en un listener HTTPS del ALB, o CloudFront fuera del
+laboratorio.
 
 ## Pendiente por entorno
 
