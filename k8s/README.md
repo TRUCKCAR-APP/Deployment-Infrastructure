@@ -194,7 +194,7 @@ proveedores OIDC**, así que no hay IRSA ni EKS Pod Identity.
 | El ALB (`target-type: ip`) llega desde IPs de la VPC, no desde un pod: las NetworkPolicies de base lo bloquearían | `ipBlock` con el CIDR de la VPC hacia `:8000` y `:8080` del borde, y `:8090` solo del gateway (`network-policies.yaml`) |
 | IRSA para S3, SNS, Polly y Bedrock | El SDK de AWS cae en `DefaultCredentialsProvider` y usa el **LabRole del nodo**: no se crean `s3-access-key` ni `s3-secret-key` |
 
-**Requisitos del clúster (sin probar en un Learner Lab real):**
+**Requisitos del clúster (probados en un Learner Lab real el 2026-11-04, EKS 1.36):**
 - **Nodos:** 2 × `t3.large` (35 pods y 8 GiB por nodo). En `t3.medium` caben como máximo 17 pods por nodo con el VPC CNI, y
   4 GiB no alcanzan para las JVM.
 - **Rol:** el clúster y el nodegroup con el **LabRole** existente (`iam.serviceRoleARN` y `iam.instanceRoleARN` en la
@@ -204,11 +204,33 @@ proveedores OIDC**, así que no hay IRSA ni EKS Pod Identity.
   `aws ec2 describe-instances --query 'Reservations[].Instances[].MetadataOptions'`.
 - **Complementos:** `aws-ebs-csi-driver`, y `vpc-cni` con `enableNetworkPolicy: "true"`. Sin esa opción, las NetworkPolicies no se
   aplican.
-- **AWS Load Balancer Controller** (Helm), con las credenciales del nodo.
+- **AWS Load Balancer Controller** (Helm), con las credenciales del nodo:
+  `helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller -n kube-system
+  --set clusterName=<clúster> --set region=us-east-1 --set vpcId=<vpc>`. Para el HPA, el complemento `metrics-server`.
+- **Recursos fuera del clúster** (CLI con la sesión del laboratorio):
+  - RDS PostgreSQL 16 en las subredes privadas de la VPC del clúster, con un grupo de seguridad que abre `5432` solo al
+    CIDR de la VPC. Usuario `truckcar_admin`, base `truckcar_db`, contraseña `TRUCKCAR_DB_ADMIN_PASSWORD` del `.env`.
+  - Dos buckets S3 privados (evidencias y audio de voz) y el tema SNS `truckcar-notifications`.
+  - Notifications lee `AWS_SNS_TOPIC_ARN` y `AWS_S3_BUCKET` (bucket de voz). Contienen la cuenta, así que se agregan
+    con un parche local del Deployment `notifications`, igual que la cuenta en `kustomization.yaml`.
 - **Antes de aplicar, en `overlays/aws-eks-lab`:**
   - Reemplazar `REEMPLAZAR` (RDS, bucket y nombre DNS del ALB) en `platform-config.yaml`.
   - Reemplazar `123456789012` por la cuenta en `kustomization.yaml`.
   - Poner el CIDR de la VPC en `network-policies.yaml` (192.168.0.0/16 si eksctl creó la VPC).
+  - El nombre DNS del ALB se conoce después del primer `kubectl apply`. Se pone en los tres orígenes, se aplica otra vez
+    y se reinician los Deployments (`kubectl -n truckcar rollout restart deploy`).
+
+**Límites del Learner Lab encontrados al desplegar:**
+- **Polly y Bedrock no están permitidos** en la cuenta: ni el LabRole ni `voclabs` tienen permiso (`AccessDeniedException`,
+  "no identity-based policy allows"). Route-AI clasifica las alertas por reglas, porque el fallback ya lo cubre. Las
+  notificaciones de voz fallan; las push por SNS sí salen. S3 y SNS funcionan con el LabRole del nodo.
+- **Al cerrar la sesión, el laboratorio detiene los nodos y el Auto Scaling Group los reemplaza.** Los nodos nuevos
+  arrancan sin sesión activa, la SCP les niega `ec2:DescribeInstances`, `nodeadm` falla y nunca se registran en el
+  clúster (`kubectl get nodes` vacío). Después de *Start Lab*, termine esas instancias para que el grupo cree otras:
+  `aws autoscaling terminate-instance-in-auto-scaling-group --instance-id <id> --no-should-decrement-desired-capacity`.
+- **El plano de control de EKS y el NAT gateway siguen cobrando** con la sesión cerrada. Si no se va a seguir pronto,
+  desmonte con `scripts/teardown.sh`. Antes de `eksctl delete cluster`, borre la instancia RDS, su grupo de subredes y
+  su grupo de seguridad: están dentro de la VPC del clúster e impiden borrarla.
 
 **Secret `truckcar-secrets` sin External Secrets** (se crea desde el `.env` local; no se guarda en el repositorio):
 
