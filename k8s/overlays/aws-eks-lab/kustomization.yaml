@@ -22,6 +22,16 @@ patches:
       kind: Ingress
       name: truckcar
     path: ingress-patch.yaml
+  # Imágenes de ECR con la etiqueta móvil "main": con IfNotPresent (el valor por defecto) un nodo que ya tiene una
+  # "main" anterior la reutiliza y rollout restart no despliega la nueva. Always solo consulta el digest a ECR (misma
+  # región) y descarga si cambió.
+  - target:
+      kind: Deployment
+      name: ^(user-identity|api-gateway|fleets-drivers|community-alerts|load-allocation|routing-restrictions|ai-fleet-allocation|route-ai-agent|notifications|frontend)$
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: Always
   # Una réplica de los componentes que en base tienen dos.
   - target:
       kind: Deployment
