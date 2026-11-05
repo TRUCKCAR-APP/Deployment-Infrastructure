@@ -229,8 +229,10 @@ proveedores OIDC**, así que no hay IRSA ni EKS Pod Identity.
   clúster (`kubectl get nodes` vacío). Después de *Start Lab*, termine esas instancias para que el grupo cree otras:
   `aws autoscaling terminate-instance-in-auto-scaling-group --instance-id <id> --no-should-decrement-desired-capacity`.
 - **El plano de control de EKS y el NAT gateway siguen cobrando** con la sesión cerrada. Si no se va a seguir pronto,
-  desmonte con `scripts/teardown.sh`. Antes de `eksctl delete cluster`, borre la instancia RDS, su grupo de subredes y
-  su grupo de seguridad: están dentro de la VPC del clúster e impiden borrarla.
+  desmonte con `scripts/teardown.sh`. El script también borra la instancia RDS de la VPC del clúster, con su grupo de
+  subredes y su grupo de seguridad, antes de `eksctl delete cluster`; si quedaran, no se podría borrar la VPC.
+- **CloudFront no está permitido** (`cloudfront:CreateDistribution` denegado). Sin dominio propio no hay certificado
+  de ACM, así que el ALB solo sirve HTTP.
 
 **Secret `truckcar-secrets` sin External Secrets** (se crea desde el `.env` local; no se guarda en el repositorio):
 
