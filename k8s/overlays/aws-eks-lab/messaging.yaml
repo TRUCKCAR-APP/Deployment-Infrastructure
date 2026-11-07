@@ -39,8 +39,29 @@ spec:
         runAsUser: 999
         runAsGroup: 999
         fsGroup: 999
+        # Sin chmod recursivo en cada montaje: kubelet le daría permisos de grupo a .erlang.cookie y RabbitMQ no
+        # arrancaría ("must be accessible by owner only") al reabrir el disco en un nodo nuevo.
+        fsGroupChangePolicy: OnRootMismatch
         seccompProfile:
           type: RuntimeDefault
+      initContainers:
+        # Repara la cookie de un disco que ya pasó por el chmod recursivo de fsGroup.
+        - name: fix-cookie-perms
+          image: rabbitmq:3.13-management
+          command: ["sh", "-c", "f=/var/lib/rabbitmq/.erlang.cookie; [ ! -f \"$f\" ] || chmod 400 \"$f\""]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 32Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/rabbitmq
       containers:
         - name: rabbitmq
           image: rabbitmq:3.13-management
