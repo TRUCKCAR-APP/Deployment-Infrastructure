@@ -28,7 +28,7 @@ las entrega el equipo:
 | Generador de carga | Créela con **Crear cuenta → Generador de carga** | Publicar cargas, ver la prueba de entrega y compartir el seguimiento |
 | Conductor | Créela con **Crear cuenta → Conductor** | Registrar su camión, recibir y aceptar cargas, navegar, reportar alertas, activar el SOS y entregar |
 | Coordinador (torre de control) | `torre@truckcar.demo` | Flota en vivo, decisiones del motor, SOS y restricciones viales |
-| Administrador | La entrega el equipo | Todo lo del coordinador, más **Usuarios**: cambiar roles y activar, verificar o suspender cuentas |
+| Administrador | La entrega el equipo | Todo lo del coordinador, más **Usuarios** (verificar las cuentas nuevas, cambiar roles, suspender) y **Plantillas** de notificación |
 
 **Ya hay tres conductores de ejemplo** en Medellín, Cali y Bucaramanga. Por eso, en una carga que salga de Bogotá el
 motor elige al conductor que usted registre en Bogotá. A ellos los verá detrás, en la lista de candidatos.
@@ -49,10 +49,27 @@ motor elige al conductor que usted registre en Bogotá. A ellos los verá detrá
    | Tara | 15 t |
    | Dónde está ahora | "GPS de este dispositivo" en el teléfono, o **Bogotá** en un computador |
 
-3. **Esperado:** "Vehículo registrado: ya puede recibir cargas" y el interruptor **Disponible para cargas** encendido.
+3. **Esperado:** "Vehículo registrado. Recibirá cargas cuando un administrador verifique su cuenta", el interruptor
+   **Disponible para cargas** encendido y el aviso **Cuenta pendiente de verificación**.
 4. **Para comprobar las validaciones:**
    - una placa mal escrita o una altura de 7 m se rechazan en el formulario;
    - una placa que ya tiene otro conductor se rechaza al guardar.
+
+### Paso 1b · El administrador verifica la cuenta del conductor
+
+Toda cuenta nueva nace **pendiente de verificación**, y el motor de asignación no le propone cargas hasta que un
+administrador la verifique.
+
+1. En otra sesión, entre con la cuenta de **administrador** → pestaña **Usuarios** → filtro **Pendientes**.
+2. En la tarjeta del conductor que acaba de crear, pulse **Verificar**.
+3. **Esperado:**
+   - en la torre: "Cuenta verificada: el conductor ya puede recibir cargas";
+   - en la app del conductor, en menos de 30 s y sin cerrar sesión: "Su cuenta fue verificada". El aviso de cuenta
+     pendiente desaparece.
+4. **Para comprobar la regla:** si publica una carga (paso 2) **antes** de verificar, en **Decisiones del motor** su
+   conductor aparece como no elegible con el motivo "Cuenta del conductor sin verificar".
+5. **Qué pasa por dentro:** user-identity publica el evento `user.status.changed` en Kafka, fleets-drivers lo guarda y
+   el motor de asignación solo considera cuentas verificadas.
 
 ### Paso 2 · El generador publica una carga
 
@@ -72,7 +89,8 @@ motor elige al conductor que usted registre en Bogotá. A ellos los verá detrá
    - **los de ejemplo detrás**, con su distancia en vacío;
    - **el Turbo descartado**: "Tipo de vehículo no coincide".
 4. **Cómo decide el motor:**
-   - **Primero filtra:** conductor ocupado, RUNT vencido, cadena de frío, tipo de camión y capacidad.
+   - **Primero filtra:** cuenta sin verificar, conductor ocupado, RUNT vencido, cadena de frío, tipo de camión y
+     capacidad.
    - **Después puntúa:** 50 % cercanía al origen, 30 % aprovechamiento de la capacidad y 20 % calificación.
    - Si nadie cumple, la carga queda en espera y el motor reintenta cada 2 minutos.
    - **Ejecutar matching con IA** lo fuerza.
@@ -124,6 +142,13 @@ motor elige al conductor que usted registre en Bogotá. A ellos los verá detrá
    - **Cambiar el rol:** el cambio aplica en el próximo inicio de sesión.
    - **Verificar una cuenta pendiente, suspender o reactivar.**
    - Su propia cuenta no se puede modificar, para no quedarse sin acceso.
+3. **Plantillas** (solo administrador): el texto de cada notificación, por categoría y canal (push o voz).
+   - Pulse **Editar**, cambie el texto y use las variables `{{…}}` de los chips; por ejemplo, la de "Propuesta,
+     asignación o reasignación de carga".
+   - **Esperado:** el cambio aplica desde la siguiente notificación. Publique otra carga y mire la pestaña **Alertas →
+     Para usted** del conductor.
+   - La app advierte si quita una variable que estaba, y no deja guardar una plantilla vacía.
+   - Un coordinador no ve esta pestaña, y el gateway le responde 403 si llama a la API.
 
 ## 3. Qué hay detrás
 
