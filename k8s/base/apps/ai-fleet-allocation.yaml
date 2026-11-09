@@ -57,6 +57,9 @@ spec:
               value: "http://load-allocation:8083"
             - name: TRUCKCAR_SERVICES_FLEETS_DRIVERS_URL
               value: "http://fleets-drivers-api:8081"
+            # Gálibo y peso de la ruta de la carga: el motor no propone cargas a camiones que ninguna ruta admite.
+            - name: TRUCKCAR_SERVICES_ROUTING_RESTRICTIONS_URL
+              value: "http://routing-restrictions:8084"
           # Spring Boot activa los grupos de health liveness/readiness al detectar Kubernetes.
           startupProbe:
             httpGet:
