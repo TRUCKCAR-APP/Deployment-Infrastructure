@@ -70,7 +70,7 @@ su esquema y su rol de base de datos, y ninguno lee el esquema de otro.
 | `load-allocation` | Cargas, propuestas de asignación, viaje, prueba de entrega (POD) y seguimiento público | Spring Boot, S3 |
 | `ai-fleet-allocation` | Elegibilidad y puntaje de conductores para cada carga | Spring Boot, Resilience4j |
 | `routing-restrictions` | Restricciones de gálibo y peso, y validación de rutas | Spring Boot, PostGIS |
-| `route-ai-agent` | Interpretación de alertas con un modelo de lenguaje, con respaldo por reglas | Azure OpenAI o Amazon Bedrock |
+| `route-ai-agent` | Interpretación de alertas con un modelo de lenguaje, con respaldo por reglas | Azure OpenAI (gpt-4.1-mini) o Amazon Bedrock |
 | `community-alerts` | Alertas viales comunitarias, confirmaciones y SOS | Spring Boot |
 | `notifications` | Push (SNS) y voz (Polly), con reintentos y estado `FAILED` | Spring Boot, AWS SDK v2 |
 | `truckcar-frontend` | PWA del conductor, torre de control, "Mis envíos" y seguimiento público | JavaScript, Leaflet 1.9, nginx 1.27 |
@@ -93,8 +93,8 @@ su esquema y su rol de base de datos, y ninguno lee el esquema de otro.
 **Restricciones del Learner Lab que condicionan los requisitos.**
 - **Identidad de los pods:** no se pueden crear roles de IAM, así que no hay IRSA ni Pod Identity. Los pods usan el
   LabRole del nodo por IMDSv2.
-- **Servicios denegados:** Amazon Bedrock, Amazon Polly y CloudFront. Por eso las alertas se clasifican por reglas y
-  la voz queda como `FAILED`.
+- **Servicios denegados:** Amazon Bedrock, Amazon Polly y CloudFront. Por eso las alertas las clasifica Azure OpenAI
+  (`gpt-4.1-mini`), fuera de AWS, y la voz queda como `FAILED`.
 - **Sesión:** las credenciales vencen con la sesión del laboratorio.
 
 ### 1.5 Fuera del alcance
@@ -492,18 +492,19 @@ su esquema y su rol de base de datos, y ninguno lee el esquema de otro.
 #### RF-28 · Interpretación de alertas con IA y respaldo por reglas
 - **Descripción:**
   - `route-ai-agent` consume `truckcar.events.road-alerts` y clasifica el texto del reporte (tipo, severidad y
-    corredor) con un modelo de lenguaje. El proveedor se elige con `TRUCKCAR_AI_PROVIDER` (`azure` por defecto, o
-    `bedrock`).
+    corredor) con un modelo de lenguaje. El proveedor se elige con `TRUCKCAR_AI_PROVIDER` (`azure` por defecto, con
+    el despliegue `gpt-4.1-mini`, o `bedrock`).
   - La respuesta se valida contra un esquema JSON.
   - Ante cualquier fallo, la alerta la clasifica `RuleBasedAlertInterpreter`.
   - `POST /api/v1/routes/plan` y `GET /routes/history/{plate}` exponen los planes de ruta.
 - **Criterios de aceptación:**
-  1. Con el modelo inaccesible (el caso del Learner Lab), la alerta igual se clasifica, por reglas.
+  1. Con el modelo inaccesible (sin clave, caído o sin cuota), la alerta igual se clasifica, por reglas.
   2. Una respuesta del modelo que no cumple el esquema cuenta como fallo.
   3. Cada respaldo incrementa `truckcar_ai_fallback_total{provider,reason}`.
 - **Componentes:** `route-ai-agent` (`ModelAlertInterpreter`, `RuleBasedAlertInterpreter`), `community-alerts`.
-- **Estado:** **Implementado.** Verificado en EKS: alerta por Kafka con el respaldo por reglas. Jira: KAN-91, KAN-142 y
-  KAN-143 (Finalizado).
+- **Estado:** **Implementado.** Verificado en EKS con Azure OpenAI: "Alerta 3 interpretada por AZURE_OPENAI" y
+  `truckcar_ai_requests_total{provider="azure"}`, sin respaldo. Antes, con Bedrock denegado, se verificó el respaldo
+  por reglas. Jira: KAN-91, KAN-142 y KAN-143 (Finalizado).
 
 #### RF-29 · Botón SOS de emergencia
 - **Descripción:**
@@ -618,7 +619,7 @@ existe, pero falta la prueba que demuestre la meta.
 
 | ID | Requisito | Meta | Criterio de aceptación técnica | Estado y evidencia |
 |---|---|---|---|---|
-| RNF-06 | Respaldo por reglas ante fallos de la IA | Ninguna alerta queda sin clasificar | Con el proveedor caído, sin credenciales o con cuota agotada (`429`, `401`, `403` o `400`), la alerta se clasifica por reglas en el mismo flujo y sube `truckcar_ai_fallback_total`. No se reintentan los `4xx` ni el *throttling*. | **Implementado:** `Route-AI-agent/.../ModelAlertInterpreter.java`, `TransientModelFailure.java` y Route-AI #2. Verificado en EKS (Bedrock denegado). |
+| RNF-06 | Respaldo por reglas ante fallos de la IA | Ninguna alerta queda sin clasificar | Con el proveedor caído, sin credenciales o con cuota agotada (`429`, `401`, `403` o `400`), la alerta se clasifica por reglas en el mismo flujo y sube `truckcar_ai_fallback_total`. No se reintentan los `4xx` ni el *throttling*. | **Implementado:** `Route-AI-agent/.../ModelAlertInterpreter.java`, `TransientModelFailure.java` y Route-AI #2. Verificado en EKS (Bedrock denegado) y, con Azure OpenAI activo, sin respaldo. |
 | RNF-07 | Circuit breaker y reintentos | Una dependencia caída no tumba al que la llama | Resilience4j: reintentos con backoff exponencial y jitter, luego circuit breaker y luego TimeLimiter. El circuito abre tras fallos consecutivos y se recupera solo. | **Parcial.** Hay circuit breaker y reintentos en AI-fleet (`application.yml:57-93`), en Route-AI (`azureOpenAi`, `bedrock`) y en Notifications (`snsPush`, `pollyVoice`). Notifications usa los valores por defecto (500 ms fijos, sin jitter; KAN-121 "Por hacer"). El gateway no tiene circuit breaker. |
 | RNF-08 | Cola offline con backoff y jitter | Sin tormentas de reintentos al volver la red | *Equal jitter*: entre la mitad y el total de 2 s × 2ⁿ, con tope de 5 min, y se reinicia al volver la red | **Implementado** en la cola offline (`truckcar-frontend/js/offlineQueue.js:207` y `:299`). **Ausente** en la reconexión del WebSocket (RF-10). |
 | RNF-09 | Entrega garantizada de eventos | Ningún cambio de estado se pierde entre la base de datos y Kafka | Outbox transaccional publicado por un solo pod a la vez (`pg_try_advisory_xact_lock`). Los consumidores reintentan 3 veces y después envían a `*.DLT`. | **Implementado** en Load-Allocation, fleets-drivers y Community-Alerts (`OutboxEventRepository.java:23`, `KafkaDeadLetterConfig.java`). Falta en User-Identity (KAN-56). La purga y la métrica de lag (KAN-57 y KAN-58) están "Por hacer". |

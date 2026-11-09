@@ -44,8 +44,9 @@ flowchart LR
         end
         s3[("Amazon S3<br/>evidencias y voz")]
         sns["Amazon SNS<br/>push"]
-        ai_svc["Amazon Bedrock / Polly<br/>(no permitidos en el laboratorio:<br/>reglas y FAILED como respaldo)"]
+        ai_svc["Amazon Polly<br/>(no permitido en el laboratorio:<br/>la voz queda FAILED)"]
     end
+    aoai["Azure OpenAI · gpt-4.1-mini<br/>(East US 2; reglas como respaldo)"]
 
     phone -- HTTPS / WSS --> tunnel --> alb
     desk -- HTTP --> alb
@@ -59,7 +60,7 @@ flowchart LR
     ui & fd & ca & la & rr & ai & ra & nt <--> kf
     la -- URLs prefirmadas --> s3
     nt --> sns & s3
-    ra -. Converse .-> ai_svc
+    ra -- HTTPS --> aoai
     nt -. SynthesizeSpeech .-> ai_svc
     ecr -. imágenes .-> eks
 ```
