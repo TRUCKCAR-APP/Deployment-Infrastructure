@@ -222,8 +222,10 @@ proveedores OIDC**, así que no hay IRSA ni EKS Pod Identity.
 
 **Límites del Learner Lab encontrados al desplegar:**
 - **Polly y Bedrock no están permitidos** en la cuenta: ni el LabRole ni `voclabs` tienen permiso (`AccessDeniedException`,
-  "no identity-based policy allows"). Route-AI clasifica las alertas por reglas, porque el fallback ya lo cubre. Las
-  notificaciones de voz fallan; las push por SNS sí salen. S3 y SNS funcionan con el LabRole del nodo.
+  "no identity-based policy allows"). Por eso Route-AI usa **Azure OpenAI** (`gpt-4.1-mini`) desde el laboratorio:
+  la llamada sale por internet y no depende de los permisos de AWS. Sin la clave en el Secret, o si el modelo falla,
+  clasifica las alertas por reglas. Las notificaciones de voz fallan; las push por SNS sí salen. S3 y SNS funcionan con
+  el LabRole del nodo.
 - **Al cerrar la sesión, el laboratorio detiene los nodos y el Auto Scaling Group los reemplaza.** Los nodos nuevos
   arrancan sin sesión activa, la SCP les niega `ec2:DescribeInstances`, `nodeadm` falla y nunca se registran en el
   clúster (`kubectl get nodes` vacío). Después de *Start Lab*, termine esas instancias para que el grupo cree otras:
@@ -254,7 +256,8 @@ kubectl -n truckcar create secret generic truckcar-secrets \
   --from-literal=pgbouncer-stats-password="$TRUCKCAR_PGBOUNCER_STATS_PASSWORD" \
   --from-literal=rabbitmq-passcode="$TRUCKCAR_STOMP_RELAY_PASSCODE" \
   --from-literal=tracking-link-secret="$TRUCKCAR_TRACKING_LINK_SECRET" \
-  --from-literal=notifications-api-key="$TRUCKCAR_NOTIFICATIONS_API_KEY"
+  --from-literal=notifications-api-key="$TRUCKCAR_NOTIFICATIONS_API_KEY" \
+  --from-literal=azure-openai-key="${AZURE_OPENAI_KEY:-}"
 kubectl apply -k k8s/overlays/aws-eks-lab
 ```
 

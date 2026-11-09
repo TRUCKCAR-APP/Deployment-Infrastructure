@@ -157,7 +157,7 @@ administrador la verifique.
 | **Despliegue** | Amazon EKS con 10 componentes: 9 microservicios Spring Boot y la PWA. Base de datos RDS PostgreSQL con PostGIS, evidencias en S3, notificaciones push por SNS. |
 | **Eventos** | Kafka, con outbox transaccional: publicar, asignar, aceptar y entregar son eventos entre servicios. |
 | **Telemetría** | WebSocket seguro abierto con un ticket de un solo uso. El JWT nunca va en la URL. RabbitMQ reparte las posiciones a la torre. |
-| **IA vial** | `route-ai-agent` clasifica las alertas con un modelo de lenguaje y desinfecta el texto contra prompt injection. En este laboratorio el modelo no está disponible, así que responde el **respaldo por reglas**, sin perder ninguna alerta. |
+| **IA vial** | `route-ai-agent` clasifica las alertas con un modelo de lenguaje (**Azure OpenAI, gpt-4.1-mini**) y desinfecta el texto contra prompt injection. Si el modelo falla o se agota la cuota, responde el **respaldo por reglas**, sin perder ninguna alerta. |
 | **Sin señal** | Cola en el teléfono, envío por lotes al reconectar y descarte de duplicados en el servidor. |
 
 Diagramas en [docs/arquitectura/ARQUITECTURA.md](../arquitectura/ARQUITECTURA.md).
