@@ -100,7 +100,7 @@ la caché de teselas, el tema oscuro sin efectos y la ausencia de framework.
 - **El HPA actual:**
   - Solo cubre 3 cargas de trabajo y solo por CPU al 70 %: gateway de 2 a 6, fleets-drivers de 2 a 8 y frontend de 2 a 4
     (`k8s/base/autoscaling.yaml`).
-  - El resto de servicios tiene 1 réplica fija.
+  - user-identity tiene 2 réplicas fijas (login y renovación de tokens) y el resto 1 réplica fija.
 
 ### 3.2 Diseño propuesto con KEDA
 
@@ -246,7 +246,8 @@ spec:
 | **Pools de conexiones** | ✅ | Hikari con 5 conexiones por pod y PgBouncer en modo `transaction` (`k8s/base/data/pgbouncer.yaml`) |
 | **Validación de horas offline** | ✅ | Las horas del teléfono se acotan entre el hito anterior y ahora (`Load-Allocation/.../service/FreightLoadService.java`, `withinTimeline`) |
 | **Reconexión del WebSocket** | 🟡 | Backoff exponencial de 2 s a 15 s, ❌ sin jitter (`untitled/js/telemetry.js:91-93`) |
-| **PodDisruptionBudget** | 🟡 | Solo en el gateway, fleets-drivers y el frontend (`k8s/base/autoscaling.yaml`) |
+| **PodDisruptionBudget** | ✅ | En la ruta crítica: gateway, user-identity, fleets-drivers, PgBouncer y frontend (`k8s/base/autoscaling.yaml`) |
+| **Apagado ordenado** | ✅ | `preStop` de 10 s en todos los servicios (`k8s/base/kustomization.yaml`) y `SERVER_SHUTDOWN=graceful` con 25 s por fase (`k8s/base/platform-config.yaml`): un rollout o un drenado no corta peticiones en curso |
 | **Escalamiento por eventos (KEDA)** | ❌ | No existe ningún `ScaledObject` (§3) |
 
 ### 4.3 Kafka

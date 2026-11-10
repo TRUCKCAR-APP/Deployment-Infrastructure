@@ -95,3 +95,25 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: frontend
+---
+# Login y renovación de tokens: drenar un nodo nunca deja sin réplicas a user-identity.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: user-identity
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: user-identity
+---
+# Todo acceso a la base pasa por PgBouncer: siempre debe quedar una réplica.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pgbouncer
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pgbouncer

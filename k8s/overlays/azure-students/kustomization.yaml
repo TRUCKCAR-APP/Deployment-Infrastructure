@@ -12,10 +12,10 @@ resources:
 patches:
   - path: platform-config.yaml
   - path: object-storage.yaml
-  # Una réplica de los componentes que en base tienen dos.
+  # Una réplica de los componentes que en base tienen dos (nodo único).
   - target:
       kind: Deployment
-      name: ^(api-gateway|fleets-drivers|frontend|pgbouncer)$
+      name: ^(api-gateway|fleets-drivers|frontend|pgbouncer|user-identity)$
     patch: |-
       - op: replace
         path: /spec/replicas

@@ -26,6 +26,20 @@ resources:
   - ingress.yaml
   - network-policies.yaml
   - autoscaling.yaml
+# preStop de 10 s en todos los servicios: al terminar un pod (rollout, drenado de nodo, reducción del HPA) el ALB y
+# kube-proxy tardan unos segundos en retirarlo de los endpoints. Sin la espera, las peticiones que aún llegan reciben
+# 502/503. La acción sleep es nativa de Kubernetes (no requiere shell en la imagen).
+patches:
+  - target:
+      kind: Deployment
+      name: ^(user-identity|api-gateway|fleets-drivers|community-alerts|load-allocation|routing-restrictions|ai-fleet-allocation|route-ai-agent|notifications|frontend)$
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/lifecycle
+        value:
+          preStop:
+            sleep:
+              seconds: 10
 configMapGenerator:
   - name: db-init-sql
     files:

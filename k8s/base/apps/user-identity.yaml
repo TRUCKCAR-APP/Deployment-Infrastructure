@@ -6,7 +6,8 @@ metadata:
   labels:
     app.kubernetes.io/name: user-identity
 spec:
-  replicas: 1
+  # Dos réplicas repartidas por zona: sin user-identity nadie inicia sesión ni renueva su token.
+  replicas: 2
   revisionHistoryLimit: 3
   selector:
     matchLabels:
@@ -30,6 +31,19 @@ spec:
       serviceAccountName: user-identity
       automountServiceAccountToken: false
       terminationGracePeriodSeconds: 40
+      topologySpreadConstraints:
+        # Obligatorio: con ScheduleAnyway el scheduler llegó a poner las dos réplicas en el mismo nodo (y si ese nodo
+        # cae, el servicio cae). maxSkew 1 deja pasar la réplica extra de un rollout; si se pierde una zona, deja de contar.
+        # matchLabelKeys: solo cuenta los pods de la misma revisión. Sin esto, en un rollout las réplicas nuevas se
+        # reparten contra las viejas y, al retirarse estas, las nuevas quedan juntas en un nodo.
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          matchLabelKeys:
+            - pod-template-hash
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: user-identity
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001

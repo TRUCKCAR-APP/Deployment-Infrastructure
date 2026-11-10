@@ -3,7 +3,8 @@
 #  - RDS PostgreSQL gestionado; Kafka, Redis y RabbitMQ con STOMP dentro del clúster sobre EBS gp3.
 #  - ALB del AWS Load Balancer Controller con health checks por servicio y reglas de red para su CIDR.
 #  - Secret truckcar-secrets creado a mano desde .env (sin External Secrets): ver k8s/README.md.
-#  - Tamaño para 2 nodos t3.large: una réplica por servicio, HPA de 1 a 3, requests reducidos.
+#  - Tamaño para 2 nodos t3.large (uno por zona): 2 réplicas en la ruta crítica (api-gateway, user-identity,
+#    fleets-drivers, pgbouncer y frontend), una en el resto, HPA hasta 3 y requests reducidos.
 # Se arma sobre base (no sobre aws-eks): ese overlay supone IRSA, MSK, ElastiCache y Amazon MQ.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -32,14 +33,9 @@ patches:
       - op: add
         path: /spec/template/spec/containers/0/imagePullPolicy
         value: Always
-  # Una réplica de los componentes que en base tienen dos.
-  - target:
-      kind: Deployment
-      name: ^(api-gateway|fleets-drivers|frontend|pgbouncer)$
-    patch: |-
-      - op: replace
-        path: /spec/replicas
-        value: 1
+  # La ruta crítica conserva las 2 réplicas de base, una por nodo/zona: si cae un nodo, la otra sigue atendiendo la
+  # entrada (api-gateway), el login (user-identity), la telemetría (fleets-drivers), el acceso a la base (pgbouncer) y
+  # la PWA (frontend). El resto queda con una réplica: trabaja con eventos de Kafka y, si cae, retoma desde su offset.
   # Sin ADOT ni X-Ray: el collector de trazas no se despliega.
   - target:
       kind: Deployment
@@ -48,24 +44,22 @@ patches:
       - op: replace
         path: /spec/replicas
         value: 0
+  # El HPA no baja de las 2 réplicas de base (minReplicas: 2); el tope se reduce a 3 por la capacidad de los nodos.
   - target:
       kind: HorizontalPodAutoscaler
     patch: |-
       - op: replace
-        path: /spec/minReplicas
-        value: 1
-      - op: replace
         path: /spec/maxReplicas
         value: 3
-  # Con una réplica, minAvailable: 1 impediría drenar un nodo (actualizaciones, cambio de tamaño del nodegroup).
+  # Arranque en frío: al reemplazar los nodos arrancan todas las JVM a la vez y compiten por CPU (los requests son de
+  # 100m). Con 3 min (36 x 5 s) el startupProbe las reiniciaba antes de terminar y entraban en bucle; 5 min (60 x 5 s).
   - target:
-      kind: PodDisruptionBudget
+      kind: Deployment
+      name: ^(user-identity|api-gateway|fleets-drivers|community-alerts|load-allocation|routing-restrictions|ai-fleet-allocation|route-ai-agent|notifications)$
     patch: |-
-      - op: remove
-        path: /spec/minAvailable
-      - op: add
-        path: /spec/maxUnavailable
-        value: 1
+      - op: replace
+        path: /spec/template/spec/containers/0/startupProbe/failureThreshold
+        value: 60
   # Servicios Spring: 100m de CPU reservada (2 t3.large tienen ~3,8 vCPU asignables) y memoria acotada.
   - target:
       kind: Deployment
