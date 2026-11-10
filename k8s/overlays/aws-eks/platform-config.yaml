@@ -14,3 +14,6 @@ data:
   TRUCKCAR_S3_REGION: us-east-1
   # Trazas a AWS X-Ray a través del ADOT Collector del clúster.
   OTEL_TRACES_ENDPOINT: adot-collector.amazon-cloudwatch:4317
+  # api-gateway: solo las subredes públicas donde vive el ALB (target-type ip); cualquier otro origen recibe 403. Valores
+  # de ejemplo (subredes públicas por defecto de eksctl): reemplácelos por los CidrBlock de las subredes del ALB.
+  TRUCKCAR_GATEWAY_TRUSTED_SOURCE_CIDRS: 192.168.0.0/19,192.168.32.0/19,192.168.64.0/19

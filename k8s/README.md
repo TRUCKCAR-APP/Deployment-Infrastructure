@@ -216,7 +216,9 @@ proveedores OIDC**, así que no hay IRSA ni EKS Pod Identity.
 - **Antes de aplicar, en `overlays/aws-eks-lab`:**
   - Reemplazar `REEMPLAZAR` (RDS, bucket y nombre DNS del ALB) en `platform-config.yaml`.
   - Reemplazar `123456789012` por la cuenta en `kustomization.yaml`.
-  - Poner el CIDR de la VPC en `network-policies.yaml` (192.168.0.0/16 si eksctl creó la VPC).
+  - Poner el CIDR de la VPC en `network-policies.yaml` (192.168.0.0/16 si eksctl creó la VPC) y el mismo valor, o mejor
+    solo las subredes del ALB, en `TRUCKCAR_GATEWAY_TRUSTED_SOURCE_CIDRS` de `platform-config.yaml`: el api-gateway
+    responde 403 a toda conexión que no venga de esos CIDR.
   - El nombre DNS del ALB se conoce después del primer `kubectl apply`. Se pone en los tres orígenes, se aplica otra vez
     y se reinician los Deployments (`kubectl -n truckcar rollout restart deploy`).
 

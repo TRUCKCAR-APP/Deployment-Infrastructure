@@ -34,3 +34,10 @@ data:
   TRUCKCAR_CORS_ALLOWED_ORIGINS: http://REEMPLAZAR.us-east-1.elb.amazonaws.com
   TRUCKCAR_WEBSOCKET_ALLOWED_ORIGINS: http://REEMPLAZAR.us-east-1.elb.amazonaws.com
   TRUCKCAR_PUBLIC_APP_URL: http://REEMPLAZAR.us-east-1.elb.amazonaws.com/
+  # api-gateway: solo acepta conexiones TCP cuyo origen esté en estos CIDR (el ALB con target-type ip); el resto recibe
+  # 403. Se compara la IP de la conexión, nunca X-Forwarded-For. Por defecto el CIDR de la VPC (el mismo de
+  # network-policies.yaml). Para cerrarlo más, ponga solo las subredes del ALB:
+  #   aws elbv2 describe-load-balancers --query "LoadBalancers[?starts_with(LoadBalancerName,'k8s-truckcar')].AvailabilityZones[].SubnetId" --output text
+  #   aws ec2 describe-subnets --subnet-ids <ids> --query 'Subnets[].CidrBlock' --output text
+  # Un CIDR mal escrito impide arrancar el gateway (falla al iniciar, no en silencio).
+  TRUCKCAR_GATEWAY_TRUSTED_SOURCE_CIDRS: 192.168.0.0/16
