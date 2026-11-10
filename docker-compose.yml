@@ -339,6 +339,9 @@ services:
       TRUCKCAR_STOMP_RELAY_HOST: rabbitmq
       TRUCKCAR_STOMP_RELAY_LOGIN: ${TRUCKCAR_STOMP_RELAY_LOGIN:-truckcar}
       TRUCKCAR_STOMP_RELAY_PASSCODE: ${TRUCKCAR_STOMP_RELAY_PASSCODE:?Defina TRUCKCAR_STOMP_RELAY_PASSCODE en .env (scripts/init-env.sh)}
+      # Orígenes aceptados en el handshake de /ws-telemetry (el gateway sí reenvía Origin en la ruta WebSocket): los
+      # mismos que el CORS del gateway. Sin esta variable quedaba abierto a cualquier puerto de localhost.
+      TRUCKCAR_WEBSOCKET_ALLOWED_ORIGINS: ${TRUCKCAR_CORS_ALLOWED_ORIGINS:-http://localhost:5500,http://127.0.0.1:5500}
 
   community-alerts:
     <<: *spring-service
@@ -476,6 +479,9 @@ services:
       TRUCKCAR_TRACING_SAMPLING_PROBABILITY: ${TRUCKCAR_TRACING_SAMPLING_PROBABILITY:-1.0}
       OTEL_RESOURCE_ATTRIBUTES: deployment.environment=${TRUCKCAR_ENVIRONMENT:-local}
       TRUCKCAR_JWT_SECRET: ${TRUCKCAR_JWT_SECRET:?Defina TRUCKCAR_JWT_SECRET en .env (scripts/init-env.sh)}
+      # CORS: solo la PWA de :5500. Sin esta variable el gateway aceptaba cualquier puerto de localhost (el valor por
+      # defecto de application.yaml, pensado para mvnw spring-boot:run con Live Server).
+      TRUCKCAR_CORS_ALLOWED_ORIGINS: ${TRUCKCAR_CORS_ALLOWED_ORIGINS:-http://localhost:5500,http://127.0.0.1:5500}
       TRUCKCAR_USER_IDENTITY_URL: ${TRUCKCAR_USER_IDENTITY_URL:-http://user-identity:8080}
       # lb://: el gateway reparte peticiones y conexiones WebSocket entre todas las réplicas de fleets-drivers
       # (las IP salen del DNS de Docker). Para depurar desde el IDE se sigue pudiendo pasar una URL http://.
