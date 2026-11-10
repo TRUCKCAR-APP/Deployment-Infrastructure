@@ -20,6 +20,27 @@ groups:
         annotations:
           summary: "{{ $labels.service }}: más del 5 % de respuestas 5xx"
 
+  # Límite de intentos de /api/v1/auth en el api-gateway (KAN-31): RequestRateLimiter con Redis.
+  - name: truckcar-security
+    rules:
+      # Sin Redis el limitador deja pasar todo (fail-open): el login funciona, pero sin protección contra fuerza bruta.
+      - alert: TruckCarAuthRateLimiterFailOpen
+        expr: sum(increase(truckcar_gateway_rate_limiter_fail_open_total[5m])) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "El límite de intentos de /api/v1/auth no tiene Redis: los logins pasan sin control (fail-open)"
+
+      - alert: TruckCarAuthBruteForceSuspected
+        expr: |
+          sum(rate(spring_cloud_gateway_requests_seconds_count{routeId=~"user-identity-(login|auth)-route", httpStatusCode="429"}[5m])) * 60 > 30
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Más de 30 intentos por minuto bloqueados en /api/v1/auth: posible fuerza bruta o credential stuffing"
+
   - name: truckcar-ai
     rules:
       - alert: TruckCarAiFallbackRateHigh
