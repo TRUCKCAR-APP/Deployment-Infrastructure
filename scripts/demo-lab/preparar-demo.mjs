@@ -172,11 +172,19 @@ async function login(email, password) {
 }
 
 async function api(method, path, { token, body, accept = [] } = {}) {
-  const res = await fetch(`${BASE}/api/v1${path}`, {
-    method,
-    headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-    body: body ? JSON.stringify(body) : undefined
-  });
+  let res;
+  for (let attempt = 1; ; attempt++) {
+    res = await fetch(`${BASE}/api/v1${path}`, {
+      method,
+      headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: body ? JSON.stringify(body) : undefined
+    });
+    // El gateway limita los intentos en /api/v1/auth (KAN-31): con 429 se espera lo que pide Retry-After y se reintenta.
+    if (res.status !== 429 || attempt >= 8) break;
+    await res.text();
+    const seconds = Number.parseInt(res.headers.get('retry-after'), 10);
+    await new Promise(resolve => setTimeout(resolve, (Number.isFinite(seconds) ? seconds : 1) * 1000 + 100));
+  }
   const text = await res.text();
   let json = null;
   try { json = text ? JSON.parse(text) : null; } catch { json = text; }

@@ -33,6 +33,12 @@ data:
   TRUCKCAR_S3_REGION: us-east-1
   TRUCKCAR_S3_ENDPOINT: ""
   TRUCKCAR_S3_PUBLIC_ENDPOINT: ""
+  # Límite de intentos de /api/v1/auth en el api-gateway (KAN-31). En Kubernetes el gateway siempre está detrás de un
+  # proxy (Ingress o ALB): sin confiar en X-Forwarded-For, todos los clientes compartirían el cubo de la IP del proxy.
+  # Se toma la entrada que agregó el proxy, contando TRUSTED_PROXIES desde la derecha (lo que escriba el cliente a la
+  # izquierda no cuenta). Con un túnel de Cloudflare delante del ALB son 2.
+  TRUCKCAR_RATE_LIMIT_TRUST_FORWARDED_FOR: "true"
+  TRUCKCAR_RATE_LIMIT_TRUSTED_PROXIES: "1"
   # Orígenes del navegador (mismo dominio que el Ingress).
   TRUCKCAR_CORS_ALLOWED_ORIGINS: https://truckcar.example.com
   TRUCKCAR_WEBSOCKET_ALLOWED_ORIGINS: https://truckcar.example.com

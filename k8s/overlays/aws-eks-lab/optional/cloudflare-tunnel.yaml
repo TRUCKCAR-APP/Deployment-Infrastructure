@@ -2,6 +2,12 @@
 # cuenta), porque el Learner Lab no permite CloudFront. cloudflared abre una conexión saliente y publica
 # https://<aleatorio>.trycloudflare.com con certificado válido y WebSocket; el tráfico entra por el ALB como cualquier
 # otro. Reemplace REEMPLAZAR por el nombre DNS del ALB. La URL cambia si el pod se reinicia: solo para pruebas.
+#
+# Límite de intentos de /api/v1/auth (KAN-31): con el túnel, cada cliente llega detrás de dos proxies (Cloudflare
+# agrega su IP a X-Forwarded-For y el ALB agrega la de salida del clúster). Si los teléfonos entran por el túnel, ponga
+# TRUCKCAR_RATE_LIMIT_TRUSTED_PROXIES: "2" en platform-config.yaml; con "1" todos compartirían el cubo de la IP de
+# salida. Con "2", quien entre directo al ALB puede elegir su propia clave escribiendo X-Forwarded-For: úselo solo
+# mientras el ALB no se publique fuera del túnel.
 apiVersion: v1
 kind: Namespace
 metadata:
