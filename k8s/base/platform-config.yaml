@@ -6,6 +6,10 @@ metadata:
   name: truckcar-platform
 data:
   TZ: America/Bogota
+  # Apagado ordenado: al recibir SIGTERM, Spring deja de aceptar peticiones nuevas y termina las que están en curso
+  # (hasta 25 s). Junto con el preStop de 10 s cabe en terminationGracePeriodSeconds: 40.
+  SERVER_SHUTDOWN: graceful
+  SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE: 25s
   TRUCKCAR_ENVIRONMENT: production
   # Base de datos: todos los servicios pasan por PgBouncer (modo transaction, sin sentencias preparadas del servidor).
   SPRING_DATASOURCE_URL: jdbc:postgresql://pgbouncer:6432/truckcar_db?prepareThreshold=0
