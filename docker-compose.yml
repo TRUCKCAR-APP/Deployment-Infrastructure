@@ -376,6 +376,8 @@ services:
       TRUCKCAR_TRACKING_LINK_SECRET: ${TRUCKCAR_TRACKING_LINK_SECRET:?Defina TRUCKCAR_TRACKING_LINK_SECRET en .env (scripts/init-env.sh)}
       TRUCKCAR_PUBLIC_APP_URL: ${TRUCKCAR_PUBLIC_APP_URL:-http://localhost:5500/}
       TRUCKCAR_SERVICES_FLEETS_DRIVERS_URL: ${TRUCKCAR_FLEETS_DRIVERS_URL:-http://fleets-drivers:8081}
+      # Validación de restricciones viales antes de IN_TRANSIT (HU3.4 / Punto 7)
+      TRUCKCAR_SERVICES_ROUTING_RESTRICTIONS_URL: ${TRUCKCAR_ROUTING_RESTRICTIONS_URL:-http://routing-restrictions:8084}
 
   routing-restrictions:
     <<: *spring-service
