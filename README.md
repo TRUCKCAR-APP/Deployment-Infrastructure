@@ -328,6 +328,7 @@ completa está en `.env.example`; las principales:
 | `TRUCKCAR_TRACING_SAMPLING_PROBABILITY` | no | Fracción de peticiones trazadas (1.0 por defecto). |
 | `TRUCKCAR_ADMIN_EMAIL`, `TRUCKCAR_ADMIN_PASSWORD` | no | ADMIN inicial: user-identity lo crea al arrancar si no existe ningún ADMIN (contraseña de 12 a 72 caracteres). Sin ellas no se crea ninguno. |
 | `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_KEY`, `AZURE_OPENAI_DEPLOYMENT` | no | Route-AI-agent, con el despliegue `gpt-4.1-mini` por defecto. Sin ellas (o si Azure falla, tarda más de 4 s o responde 429) las alertas se interpretan por reglas de palabras clave y ninguna se pierde. |
+| `HERE_API_KEY` | sí, para planear rutas | Route-AI-agent: rutas para camión con HERE Routing v8 (altura, peso bruto, peso por eje, ejes y peajes en COP) y HERE Geocoding para las ciudades sin coordenadas. Sin ella, `POST /api/v1/routes/plan` responde 503; nunca se inventa una ruta. |
 | `TRUCKCAR_ASSIGNMENT_RESPONSE_TIMEOUT_MINUTES` | no | Minutos que tiene un conductor para responder una propuesta (por defecto 60). |
 | `TRUCKCAR_NOTIFICATIONS_API_KEY` | no | Habilita `POST /api/v1/notifications/send` con `X-API-KEY`. |
 | `TRUCKCAR_FRONTEND_DIR` | no | Carpeta del frontend si no es `./truckcar-frontend`. |
