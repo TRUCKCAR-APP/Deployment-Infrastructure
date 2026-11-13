@@ -22,6 +22,8 @@
 #   La lista completa y su equivalente en AWS Secrets Manager / Azure Key Vault está en .env.example.
 #   AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_KEY   opcionales (Route-AI-agent); sin ellas la
 #                         interpretación de alertas usa el fallback por reglas.
+#   HERE_API_KEY          Route-AI-agent: rutas para camión (HERE Routing v8). Sin ella, /routes/plan
+#                         responde 503.
 #
 # No ejecutar a la vez los microservicios con mvnw en el host: compartirían los grupos de
 # consumo de Kafka con los contenedores y se repartirían los eventos.
@@ -417,6 +419,7 @@ services:
       # Se toman del entorno o de .env; nunca se escriben en este archivo.
       AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:-https://example.invalid/}
       AZURE_OPENAI_KEY: ${AZURE_OPENAI_KEY:-sin-configurar}
+      HERE_API_KEY: ${HERE_API_KEY:-}
 
   notifications:
     <<: *spring-service
