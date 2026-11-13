@@ -132,6 +132,10 @@ El despliegue en AWS (EKS), el stack por capa, los eventos de Kafka y la telemet
   (`alert.sos.triggered` / `alert.sos.acknowledged`), un tópico propio que Notifications consume en su contenedor de
   alta prioridad (push `EMERGENCIA_SOS`). La torre lo ve en `GET /api/v1/alerts/sos` y lo atiende con
   `PATCH /api/v1/alerts/sos/{id}/acknowledge`. Sin señal, la PWA lo encola (`alert.sos`) y sale primero al reconectar.
+  Un SOS **nunca se rechaza** por sus datos: sin GPS válido se usa la última posición del conductor en fleets-drivers
+  (`locationSource: LAST_KNOWN`, con `locationRecordedAt`) y, si no hay ninguna, queda `UNKNOWN` sin coordenadas. El
+  conductor anula una falsa alarma con `PATCH /api/v1/alerts/sos/{id}/cancel` (`alert.sos.cancelled`); la torre filtra
+  con `GET /api/v1/alerts/sos?status=ACTIVE,ACKNOWLEDGED,RESOLVED,CANCELLED` (sin `status`, las abiertas).
 - **Seguimiento público**: `POST /api/v1/loads/{loadId}/public-tracking-link` (GENERADOR dueño, COORDINADOR o ADMIN)
   firma un token HMAC-SHA256 con `TRUCKCAR_TRACKING_LINK_SECRET`. Vence a las 48 h o 6 h después de la entrega, lo
   que llegue primero. `GET /api/v1/loads/public-tracking/{token}` es la única ruta anónima de cargas en el gateway (solo

@@ -350,6 +350,8 @@ services:
       # Rol propio: dueño solo del esquema community_alerts (ver docker/postgres/init-service-schemas.sql).
       SPRING_DATASOURCE_USERNAME: community_alerts
       SPRING_DATASOURCE_PASSWORD: ${TRUCKCAR_DB_PASSWORD_COMMUNITY_ALERTS:?Defina TRUCKCAR_DB_PASSWORD_COMMUNITY_ALERTS en .env (scripts/init-env.sh)}
+      # SOS sin GPS: se completa con la última posición del conductor en fleets-drivers (llamada interna).
+      TRUCKCAR_SERVICES_FLEETS_DRIVERS_URL: ${TRUCKCAR_FLEETS_DRIVERS_URL:-http://fleets-drivers:8081}
 
   load-allocation:
     <<: *spring-service
