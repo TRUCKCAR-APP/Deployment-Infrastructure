@@ -511,11 +511,16 @@ su esquema y su rol de base de datos, y ninguno lee el esquema de otro.
   - El conductor mantiene presionado el SOS 1,5 s. La PWA envía su posición GPS y se publica `truckcar.events.sos`.
   - `notifications` emite la notificación `EMERGENCIA_SOS` con prioridad alta.
   - La torre la atiende con `PATCH /alerts/sos/{sosId}/acknowledge`.
+  - Sin GPS el SOS se registra igual: `community-alerts` toma la última posición del conductor en `fleets-drivers`
+    (`LAST_KNOWN`) o lo marca `UNKNOWN`. El conductor puede anular una falsa alarma (`PATCH /alerts/sos/{sosId}/cancel`).
 - **Criterios de aceptación:**
   1. Un toque corto no dispara el SOS.
   2. Sin señal, el SOS se encola y se envía al reconectar.
   3. La torre ve el SOS con la posición y puede marcarlo como atendido.
   4. El rojo del SOS no se usa en ninguna otra parte de la interfaz.
+  5. Un SOS sin ubicación, con coordenadas inválidas o con textos demasiado largos nunca se rechaza (ni en línea ni
+     en la cola offline); la torre ve de dónde salió la posición (`DEVICE_GPS`, `LAST_KNOWN` o `UNKNOWN`).
+  6. Solo el conductor que lo activó puede anularlo, y no después de que la torre lo resuelva (409).
 - **Componentes:** `community-alerts`, `notifications`, `truckcar-frontend`.
 - **Estado:** **Implementado.** Jira: KAN-131, KAN-138 y KAN-139 (Finalizado).
 
