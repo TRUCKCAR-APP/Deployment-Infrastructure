@@ -53,6 +53,9 @@ spec:
                 secretKeyRef:
                   name: truckcar-secrets
                   key: db-password-community-alerts
+            # SOS sin GPS: se completa con la última posición del conductor en fleets-drivers (llamada interna).
+            - name: TRUCKCAR_SERVICES_FLEETS_DRIVERS_URL
+              value: "http://fleets-drivers-api:8081"
           # Spring Boot activa los grupos de health liveness/readiness al detectar Kubernetes.
           startupProbe:
             httpGet:
