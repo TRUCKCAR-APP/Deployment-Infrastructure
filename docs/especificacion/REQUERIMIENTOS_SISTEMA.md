@@ -70,7 +70,7 @@ su esquema y su rol de base de datos, y ninguno lee el esquema de otro.
 | `load-allocation` | Cargas, propuestas de asignación, viaje, prueba de entrega (POD) y seguimiento público | Spring Boot, S3 |
 | `ai-fleet-allocation` | Elegibilidad y puntaje de conductores para cada carga | Spring Boot, Resilience4j |
 | `routing-restrictions` | Restricciones de gálibo y peso, y validación de rutas | Spring Boot, PostGIS |
-| `route-ai-agent` | Interpretación de alertas con un modelo de lenguaje, con respaldo por reglas | Azure OpenAI (gpt-4.1-mini) o Amazon Bedrock |
+| `route-ai-agent` | Interpretación de alertas con un modelo de lenguaje, con respaldo por reglas; planeación de rutas para camión (altura, peso, ejes y peajes) validadas contra las restricciones registradas | Azure OpenAI (gpt-4.1-mini) o Amazon Bedrock; HERE Routing v8 y Geocoding |
 | `community-alerts` | Alertas viales comunitarias, confirmaciones y SOS | Spring Boot |
 | `notifications` | Push (SNS) y voz (Polly), con reintentos y estado `FAILED` | Spring Boot, AWS SDK v2 |
 | `truckcar-frontend` | PWA del conductor, torre de control, "Mis envíos" y seguimiento público | JavaScript, Leaflet 1.9, nginx 1.27 |

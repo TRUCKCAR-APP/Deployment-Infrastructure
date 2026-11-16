@@ -63,6 +63,13 @@ spec:
                   name: truckcar-secrets
                   key: azure-openai-key
                   optional: true
+            # Rutas para camión (HERE Routing v8). Sin ella, POST /routes/plan responde 503: no hay rutas inventadas.
+            - name: HERE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: truckcar-secrets
+                  key: here-api-key
+                  optional: true
           # Spring Boot activa los grupos de health liveness/readiness al detectar Kubernetes.
           startupProbe:
             httpGet:

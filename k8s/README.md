@@ -259,7 +259,8 @@ kubectl -n truckcar create secret generic truckcar-secrets \
   --from-literal=rabbitmq-passcode="$TRUCKCAR_STOMP_RELAY_PASSCODE" \
   --from-literal=tracking-link-secret="$TRUCKCAR_TRACKING_LINK_SECRET" \
   --from-literal=notifications-api-key="$TRUCKCAR_NOTIFICATIONS_API_KEY" \
-  --from-literal=azure-openai-key="${AZURE_OPENAI_KEY:-}"
+  --from-literal=azure-openai-key="${AZURE_OPENAI_KEY:-}" \
+  --from-literal=here-api-key="${HERE_API_KEY:-}"
 kubectl apply -k k8s/overlays/aws-eks-lab
 ```
 
