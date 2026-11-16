@@ -228,7 +228,7 @@ temporales de la sesión.
   del laboratorio.
 - **Región:** la variable de organización `AWS_REGION` (opcional, `us-east-1` por defecto).
 - **Vencen con cada sesión** (unas 4 horas): al empezar a trabajar se actualizan los tres secretos.
-  - Con las credenciales vencidas, el job **ecr** falla con un mensaje que lo explica: se actualizan y se vuelve a ejecutar.
+  - Con las credenciales vencidas o sin permisos para ECR, el job **ecr** avisa y omite la publicación sin bloquear el CI; se actualizan y se vuelve a ejecutar.
   - Sin secretos configurados, el job termina con un aviso y no publica.
 - **Desde la terminal**, con un token con el permiso `admin:org`:
 

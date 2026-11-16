@@ -7,7 +7,7 @@
 # laboratorio. La región sale de la variable AWS_REGION (us-east-1 por defecto).
 #
 #   Sin secretos configurados   el job termina con un aviso y no publica (los repos sin AWS siguen en verde).
-#   Con secretos vencidos       el job falla con un mensaje explícito: hay que actualizarlos y volver a ejecutarlo.
+#   Con secretos vencidos       el job avisa y omite la publicación; hay que actualizarlos y volver a ejecutarlo.
 name: ECR image
 
 on:
@@ -97,6 +97,7 @@ jobs:
       - name: Credenciales temporales del Learner Lab
         id: aws
         if: steps.creds.outputs.present == 'true'
+        continue-on-error: true
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -105,19 +106,24 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Explicar credenciales vencidas
-        if: failure() && steps.aws.outcome == 'failure'
+        if: steps.creds.outputs.present == 'true' && steps.aws.outcome == 'failure'
         run: |
-          echo "::error title=Credenciales de AWS inválidas o vencidas::Las credenciales del Learner Lab duran una sesión. Copie las nuevas de 'AWS Details' en los secretos AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY y AWS_SESSION_TOKEN de la organización y vuelva a ejecutar este job."
-          exit 1
+          echo "::warning title=Publicación ECR omitida::Las credenciales de AWS son inválidas, vencieron o no tienen permisos para ECR. El resto del CI puede continuar; actualice AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY y AWS_SESSION_TOKEN y vuelva a ejecutar este job."
+          {
+            echo "### Publicación ECR omitida"
+            echo
+            echo "Las credenciales de AWS son inválidas, vencieron o no tienen permisos para ECR."
+            echo "El resto del CI puede continuar. Actualice los secretos AWS_* y vuelva a ejecutar este job."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Login en Amazon ECR
         id: ecr
-        if: steps.creds.outputs.present == 'true'
+        if: steps.creds.outputs.present == 'true' && steps.aws.outcome == 'success'
         uses: aws-actions/amazon-ecr-login@v2
 
       # El repositorio se crea la primera vez: mutable (:main se mueve), con escaneo de vulnerabilidades al publicar.
       - name: Repositorio truckcar/${{ inputs.image }}
-        if: steps.creds.outputs.present == 'true'
+        if: steps.creds.outputs.present == 'true' && steps.aws.outcome == 'success'
         run: |
           if ! aws ecr describe-repositories --repository-names "$ECR_REPOSITORY" >/dev/null 2>&1; then
             aws ecr create-repository --repository-name "$ECR_REPOSITORY" \
@@ -128,11 +134,11 @@ jobs:
           fi
 
       - uses: docker/setup-buildx-action@v3
-        if: steps.creds.outputs.present == 'true'
+        if: steps.creds.outputs.present == 'true' && steps.aws.outcome == 'success'
 
       - name: Construir y publicar
         id: build
-        if: steps.creds.outputs.present == 'true'
+        if: steps.creds.outputs.present == 'true' && steps.aws.outcome == 'success'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -149,7 +155,7 @@ jobs:
 
       - name: Resumen
         id: publish
-        if: steps.creds.outputs.present == 'true'
+        if: steps.creds.outputs.present == 'true' && steps.aws.outcome == 'success'
         env:
           IMAGE_URI: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.source.outputs.sha }}
           DIGEST: ${{ steps.build.outputs.digest }}
