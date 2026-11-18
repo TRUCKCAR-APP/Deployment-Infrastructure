@@ -317,6 +317,13 @@ services:
       # ADMIN inicial (AdminBootstrap): solo se crea si no existe ningún ADMIN.
       TRUCKCAR_ADMIN_EMAIL: ${TRUCKCAR_ADMIN_EMAIL:-}
       TRUCKCAR_ADMIN_PASSWORD: ${TRUCKCAR_ADMIN_PASSWORD:-}
+      # Correo del código para recuperar la contraseña (Gmail con contraseña de aplicación). Solo en .env; sin
+      # SMTP_HOST no se envía ningún correo.
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      TRUCKCAR_MAIL_FROM: ${TRUCKCAR_MAIL_FROM:-}
 
   fleets-drivers:
     <<: *spring-service
