@@ -1,7 +1,7 @@
 # =============================================================================
-# TruckCar - Plataforma completa en Docker (infraestructura + 9 microservicios + frontend)
+# TruckCar - Plataforma completa en Docker (infraestructura + 10 microservicios + frontend)
 #
-# Uso:   docker compose up -d --build      (la primera vez compila los 9 servicios, tarda varios minutos)
+# Uso:   docker compose up -d --build      (la primera vez compila los 10 servicios, tarda varios minutos)
 #        docker compose ps
 #        docker compose logs -f api-gateway
 #        docker compose down               (agregar -v para borrar los datos)
@@ -20,8 +20,9 @@
 #   Este archivo no contiene credenciales: las contraseñas de PostgreSQL (administrador y un rol por servicio), S3,
 #   RabbitMQ, PgBouncer, Grafana y el TRUCKCAR_JWT_SECRET son obligatorias y compose no arranca sin ellas.
 #   La lista completa y su equivalente en AWS Secrets Manager / Azure Key Vault está en .env.example.
-#   AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_KEY   opcionales (Route-AI-agent); sin ellas la
-#                         interpretación de alertas usa el fallback por reglas.
+#   AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_KEY   opcionales (Route-AI-agent y Voice-AI-Assistant); sin ellas la
+#                         interpretación de alertas usa el fallback por reglas y el Copiloto de voz solo sus reglas
+#                         locales.
 #   HERE_API_KEY          Route-AI-agent: rutas para camión (HERE Routing v8). Sin ella, /routes/plan
 #                         responde 503.
 #
@@ -441,6 +442,31 @@ services:
       TRUCKCAR_JWT_SECRET: ${TRUCKCAR_JWT_SECRET:?Defina TRUCKCAR_JWT_SECRET en .env (scripts/init-env.sh)}
       TRUCKCAR_NOTIFICATIONS_API_KEY: ${TRUCKCAR_NOTIFICATIONS_API_KEY:-}
 
+  # Intérprete con IA de las órdenes de voz que las reglas del Copiloto no entienden (repo Voice-AI-Assistant).
+  # Sin base de datos ni Kafka: solo Redis (memoria corta, opcional) y Azure OpenAI.
+  voice-ai-assistant:
+    build: { context: ./Voice-AI-Assistant, dockerfile: ../docker/spring-service.Dockerfile }
+    image: truckcar/voice-ai-assistant:local
+    container_name: truckcar-voice-ai-assistant
+    restart: unless-stopped
+    mem_limit: 512m
+    networks:
+      - truckcar-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      TZ: America/Bogota
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://otel-collector:4318/v1/traces
+      TRUCKCAR_TRACING_SAMPLING_PROBABILITY: ${TRUCKCAR_TRACING_SAMPLING_PROBABILITY:-1.0}
+      OTEL_RESOURCE_ATTRIBUTES: deployment.environment=${TRUCKCAR_ENVIRONMENT:-local}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      # Se toman del entorno o de .env; nunca se escriben en este archivo.
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:-https://example.invalid/}
+      AZURE_OPENAI_KEY: ${AZURE_OPENAI_KEY:-sin-configurar}
+      AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT:-gpt-4.1-mini}
+
   # ===========================================================================
   # Puertas de entrada públicas
   # ===========================================================================
@@ -478,6 +504,8 @@ services:
         condition: service_started
       notifications:
         condition: service_started
+      voice-ai-assistant:
+        condition: service_started
     environment:
       TZ: America/Bogota
       # Actuator (health, prometheus) en :8090, solo dentro de truckcar-network.
@@ -499,6 +527,7 @@ services:
       TRUCKCAR_AI_FLEET_ALLOCATION_URL: ${TRUCKCAR_AI_FLEET_ALLOCATION_URL:-http://ai-fleet-allocation:8085}
       TRUCKCAR_ROUTE_AI_AGENT_URL: ${TRUCKCAR_ROUTE_AI_AGENT_URL:-http://route-ai-agent:8086}
       TRUCKCAR_NOTIFICATIONS_URL: ${TRUCKCAR_NOTIFICATIONS_URL:-http://notifications:8087}
+      TRUCKCAR_VOICE_AI_ASSISTANT_URL: ${TRUCKCAR_VOICE_AI_ASSISTANT_URL:-http://voice-ai-assistant:8088}
       # Tickets de un solo uso del WebSocket de telemetría (el JWT ya no viaja en la URL de /ws-telemetry).
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: "6379"

@@ -4,7 +4,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 REPOS=(User-Identity api-gateway fleets-drivers Community-Alerts Load-Allocation
-       AI-powered-fleet-allocation Route-AI-agent Routing-Restrictions Notifications truckcar-frontend)
+       AI-powered-fleet-allocation Route-AI-agent Routing-Restrictions Notifications Voice-AI-Assistant
+       truckcar-frontend)
 for repo in "${REPOS[@]}"; do
   if [ -d "$repo/.git" ]; then
     echo "== $repo: actualizando main"

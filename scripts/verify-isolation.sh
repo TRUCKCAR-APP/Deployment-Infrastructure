@@ -11,7 +11,8 @@ code() { curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$@"; }
 internal() { docker run --rm --network truckcar-network curlimages/curl:8.10.1 -s -o /dev/null -w '%{http_code}' --max-time 5 "$1" 2>/dev/null; }
 
 declare -A SERVICES=([8080]=user-identity [8081]=fleets-drivers [8082]=community-alerts [8083]=load-allocation
-                     [8084]=routing-restrictions [8085]=ai-fleet-allocation [8086]=route-ai-agent [8087]=notifications)
+                     [8084]=routing-restrictions [8085]=ai-fleet-allocation [8086]=route-ai-agent [8087]=notifications
+                     [8088]=voice-ai-assistant)
 echo "== Puertos internos desde el host (deben estar cerrados)"
 for port in $(printf '%s\n' "${!SERVICES[@]}" | sort) 8090 6432 4318 3200 9127; do
   if curl -s -o /dev/null --max-time 3 "http://localhost:$port/"; then fail ":$port (${SERVICES[$port]:-infraestructura}) responde desde el host"

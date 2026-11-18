@@ -3,7 +3,7 @@
 $ErrorActionPreference = 'Stop'
 Set-Location (Join-Path $PSScriptRoot '..')
 $repos = 'User-Identity','api-gateway','fleets-drivers','Community-Alerts','Load-Allocation',
-         'AI-powered-fleet-allocation','Route-AI-agent','Routing-Restrictions','Notifications','truckcar-frontend'
+         'AI-powered-fleet-allocation','Route-AI-agent','Routing-Restrictions','Notifications','Voice-AI-Assistant','truckcar-frontend'
 foreach ($repo in $repos) {
     if (Test-Path (Join-Path $repo '.git')) {
         Write-Host "== ${repo}: actualizando main"

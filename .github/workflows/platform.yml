@@ -1,6 +1,6 @@
 # Validación de la plataforma TruckCar.
 #   static     configuración de docker-compose, Prometheus, otel-collector, dashboards y manifiestos de Kubernetes.
-#   isolation  levanta el stack completo (9 servicios + infraestructura) con secretos generados y ejecuta
+#   isolation  levanta el stack completo (10 servicios + infraestructura) con secretos generados y ejecuta
 #              scripts/verify-isolation.sh (aislamiento de red) y una prueba de humo de trazas y métricas.
 #
 # Se ejecuta en este repo y lo reutilizan los repos de los servicios (workflow_call): con service-repo/service-ref el
@@ -113,11 +113,11 @@ jobs:
         run: |
           bash scripts/init-env.sh
           docker compose up -d --build
-          services="user-identity fleets-drivers community-alerts load-allocation routing-restrictions ai-fleet-allocation route-ai-agent notifications api-gateway"
+          services="user-identity fleets-drivers community-alerts load-allocation routing-restrictions ai-fleet-allocation route-ai-agent notifications voice-ai-assistant api-gateway"
           for _ in $(seq 1 90); do
             started=0
             for s in $services; do docker compose logs "$s" 2>/dev/null | grep -q "Started .*Application" && started=$((started + 1)); done
-            echo "servicios arriba: $started/9"; [ "$started" -eq 9 ] && exit 0
+            echo "servicios arriba: $started/10"; [ "$started" -eq 10 ] && exit 0
             sleep 5
           done
           echo "::error::la plataforma no arrancó a tiempo"; exit 1
@@ -126,10 +126,10 @@ jobs:
         run: |
           set -o pipefail
           bash scripts/verify-isolation.sh | tee isolation.txt
-          # Las 25 comprobaciones deben ejecutarse y pasar: si una desaparece del script, el job falla.
+          # Las 26 comprobaciones deben ejecutarse y pasar: si una desaparece del script, el job falla.
           checks=$(grep -c "^  OK " isolation.txt)
-          echo "comprobaciones OK: $checks/25"
-          [ "$checks" -eq 25 ] || { echo "::error::se esperaban 25 comprobaciones de aislamiento, hubo $checks"; exit 1; }
+          echo "comprobaciones OK: $checks/26"
+          [ "$checks" -eq 26 ] || { echo "::error::se esperaban 26 comprobaciones de aislamiento, hubo $checks"; exit 1; }
 
       - name: Métricas y trazas
         run: |
@@ -138,10 +138,10 @@ jobs:
           up=0
           for _ in $(seq 1 24); do
             up=$(curl -s http://127.0.0.1:9090/api/v1/query --data-urlencode 'query=count(up{job="truckcar-services"} == 1)' | jq -r '.data.result[0].value[1] // 0')
-            [ "$up" -ge 9 ] && break
+            [ "$up" -ge 10 ] && break
             sleep 5
           done
-          echo "targets de Prometheus arriba: $up"; [ "$up" -ge 9 ] || { echo "::error::Prometheus no ve los 9 servicios"; exit 1; }
+          echo "targets de Prometheus arriba: $up"; [ "$up" -ge 10 ] || { echo "::error::Prometheus no ve los 10 servicios"; exit 1; }
           curl -s -o /dev/null -H "X-Correlation-Id: ci-$GITHUB_RUN_ID" http://localhost:8000/api/v1/loads
           pw=$(grep '^TRUCKCAR_GRAFANA_ADMIN_PASSWORD=' .env | cut -d= -f2)
           traces=0

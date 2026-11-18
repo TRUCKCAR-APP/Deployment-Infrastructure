@@ -50,6 +50,10 @@ scrape_configs:
         type: A
         port: 8087
         refresh_interval: 15s
+      - names: [voice-ai-assistant]
+        type: A
+        port: 8088
+        refresh_interval: 15s
     relabel_configs:
       # service="load-allocation" (nombre DNS); instance queda como IP:puerto de cada réplica.
       - source_labels: [__meta_dns_name]
