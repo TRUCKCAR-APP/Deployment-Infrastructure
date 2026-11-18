@@ -14,7 +14,7 @@ function Get-InternalStatus($url) {
 }
 
 $ports = [ordered]@{ '8080'='user-identity'; '8081'='fleets-drivers'; '8082'='community-alerts'; '8083'='load-allocation';
-                     '8084'='routing-restrictions'; '8085'='ai-fleet-allocation'; '8086'='route-ai-agent'; '8087'='notifications';
+                     '8084'='routing-restrictions'; '8085'='ai-fleet-allocation'; '8086'='route-ai-agent'; '8087'='notifications'; '8088'='voice-ai-assistant';
                      '8090'='actuator del gateway'; '6432'='pgbouncer'; '4318'='otel-collector'; '3200'='tempo'; '9127'='pgbouncer-exporter' }
 Write-Host '== Puertos internos desde el host (deben estar cerrados)'
 foreach ($port in $ports.Keys) {

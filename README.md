@@ -1,6 +1,6 @@
 # TruckCar · Deployment-Infrastructure
 
-Orquestación de la plataforma TruckCar: Docker Compose para desarrollo (infraestructura, los 9 microservicios Spring
+Orquestación de la plataforma TruckCar: Docker Compose para desarrollo (infraestructura, los 10 microservicios Spring
 Boot, el api-gateway, el frontend y el stack de observabilidad), manifiestos de Kubernetes para AWS EKS y Azure AKS
 (`k8s/`) y el pipeline de validación de la plataforma. Los microservicios están **aislados en una red privada** con un
 único punto de entrada para la API.
@@ -25,6 +25,7 @@ flowchart LR
         ai["ai-fleet-allocation :8085"]
         ra["route-ai-agent :8086"]
         nt["notifications :8087"]
+        va["voice-ai-assistant :8088"]
         pb[["pgbouncer :6432"]]
         pg[("postgis :5432")]
         kf[["kafka :29092"]]
@@ -39,9 +40,10 @@ flowchart LR
 
     browser -- "localhost:5500" --> fe
     browser -- "localhost:8000 (JWT · WebSocket con ticket)" --> gw
-    gw --> ui & fd & ca & la & rr & ai & ra & nt
+    gw --> ui & fd & ca & la & rr & ai & ra & nt & va
     gw -- "tickets del WebSocket" --> rd
     fd -- "posición en vivo" --> rd
+    va -- "memoria corta" --> rd
     fd -- "relay STOMP" --> rmq
     ai --> la & fd
     ra --> ca & rr
@@ -63,7 +65,7 @@ El despliegue en AWS (EKS), el stack por capa, los eventos de Kafka y la telemet
 |---|---|---|
 | **api-gateway** | `http://localhost:8000` (única entrada a la API) | `api-gateway:8000` |
 | **frontend** | `http://localhost:5500` | `frontend:80` |
-| user-identity, fleets-drivers, community-alerts, load-allocation, routing-restrictions, ai-fleet-allocation, route-ai-agent, notifications | **ninguno** (sin `ports:`) | `<servicio>:<puerto>`, p. ej. `load-allocation:8083` |
+| user-identity, fleets-drivers, community-alerts, load-allocation, routing-restrictions, ai-fleet-allocation, route-ai-agent, notifications, voice-ai-assistant | **ninguno** (sin `ports:`) | `<servicio>:<puerto>`, p. ej. `load-allocation:8083` |
 | PostgreSQL / Kafka / Redis | solo `127.0.0.1:5432`, `127.0.0.1:9092`, `127.0.0.1:6379` | `postgis:5432`, `kafka:29092`, `redis:6379` |
 | Grafana / Prometheus | solo `http://127.0.0.1:3000`, `http://127.0.0.1:9090` | `grafana:3000`, `prometheus:9090` |
 | otel-collector, Tempo, pgbouncer-exporter, actuator del gateway | **ninguno** | `otel-collector:4318`, `tempo:3200`, `pgbouncer-exporter:9127`, `api-gateway:8090` |
@@ -187,7 +189,7 @@ bash scripts/init-env.sh
 docker compose up -d --build
 ```
 
-La primera construcción compila los 9 servicios (varios minutos); las siguientes reutilizan la caché de Maven.
+La primera construcción compila los 10 servicios (varios minutos); las siguientes reutilizan la caché de Maven.
 `docker compose ps` debe mostrar todos los contenedores `Up` (postgis, kafka, redis y frontend `healthy`).
 
 Abrir `http://localhost:5500`, registrarse e iniciar sesión. Para actualizar el código:
@@ -202,7 +204,7 @@ Tras cada despliegue (y después de volver del modo debug) ejecute:
 powershell -ExecutionPolicy Bypass -File scripts\verify-isolation.ps1   # Windows PowerShell
 ```
 
-Comprueba que los puertos internos (`:8080`–`:8087`, el actuator del gateway, PgBouncer, el collector y Tempo) **no**
+Comprueba que los puertos internos (`:8080`–`:8088`, el actuator del gateway, PgBouncer, el collector y Tempo) **no**
 respondan desde el host; que el gateway (`:8000`) exija JWT y no deje alcanzar `/actuator/**` (tampoco con rutas
 `../`); que Prometheus sí llegue a `/actuator/prometheus` dentro de `truckcar-network`, y que Grafana y Prometheus solo
 escuchen en `127.0.0.1`. Termina con código distinto de 0 si algo falla: es el paso de aislamiento del CI.
@@ -327,7 +329,7 @@ completa está en `.env.example`; las principales:
 | `TRUCKCAR_PUBLIC_APP_URL` | no | PWA que abre los enlaces de seguimiento (`http://localhost:5500/` por defecto). |
 | `TRUCKCAR_TRACING_SAMPLING_PROBABILITY` | no | Fracción de peticiones trazadas (1.0 por defecto). |
 | `TRUCKCAR_ADMIN_EMAIL`, `TRUCKCAR_ADMIN_PASSWORD` | no | ADMIN inicial: user-identity lo crea al arrancar si no existe ningún ADMIN (contraseña de 12 a 72 caracteres). Sin ellas no se crea ninguno. |
-| `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_KEY`, `AZURE_OPENAI_DEPLOYMENT` | no | Route-AI-agent, con el despliegue `gpt-4.1-mini` por defecto. Sin ellas (o si Azure falla, tarda más de 4 s o responde 429) las alertas se interpretan por reglas de palabras clave y ninguna se pierde. |
+| `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_KEY`, `AZURE_OPENAI_DEPLOYMENT` | no | Route-AI-agent y Voice-AI-Assistant, con el despliegue `gpt-4.1-mini` por defecto. Sin ellas (o si Azure falla, tarda más de 4 s o responde 429) las alertas se interpretan por reglas de palabras clave y ninguna se pierde, y el Copiloto de voz se queda con sus reglas locales. |
 | `HERE_API_KEY` | sí, para planear rutas | Route-AI-agent: rutas para camión con HERE Routing v8 (altura, peso bruto, peso por eje, ejes y peajes en COP) y HERE Geocoding para las ciudades sin coordenadas. Sin ella, `POST /api/v1/routes/plan` responde 503; nunca se inventa una ruta. |
 | `TRUCKCAR_ASSIGNMENT_RESPONSE_TIMEOUT_MINUTES` | no | Minutos que tiene un conductor para responder una propuesta (por defecto 60). |
 | `TRUCKCAR_NOTIFICATIONS_API_KEY` | no | Habilita `POST /api/v1/notifications/send` con `X-API-KEY`. |
@@ -382,6 +384,7 @@ Después, ejecutar `scripts/verify-isolation.*`.
 | ai-fleet-allocation | `TRUCKCAR_AI_FLEET_ALLOCATION_URL` | `api-gateway` |
 | route-ai-agent | `TRUCKCAR_ROUTE_AI_AGENT_URL` | `api-gateway` |
 | notifications | `TRUCKCAR_NOTIFICATIONS_URL` | `api-gateway` |
+| voice-ai-assistant | `TRUCKCAR_VOICE_AI_ASSISTANT_URL` | `api-gateway` |
 
 Notas:
 
