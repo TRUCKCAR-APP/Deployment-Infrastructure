@@ -41,3 +41,9 @@ data:
   #   aws ec2 describe-subnets --subnet-ids <ids> --query 'Subnets[].CidrBlock' --output text
   # Un CIDR mal escrito impide arrancar el gateway (falla al iniciar, no en silencio).
   TRUCKCAR_GATEWAY_TRUSTED_SOURCE_CIDRS: 192.168.0.0/16
+  # Límite de solicitudes por IP del cliente. En el Learner Lab el tráfico del teléfono entra por el túnel de Cloudflare
+  # (optional/cloudflare-tunnel.yaml): Cloudflare escribe la IP del cliente en X-Forwarded-For y el ALB agrega la del pod
+  # cloudflared. Con 1 proxy de confianza (el valor de base) la clave era la IP de ese pod: todos los usuarios compartían
+  # el mismo cupo y el login respondía 429 después de 5 intentos entre todos. Con 2 se toma la del cliente; por el ALB
+  # directo (sin túnel) X-Forwarded-For trae una sola entrada y se usa esa.
+  TRUCKCAR_RATE_LIMIT_TRUSTED_PROXIES: "2"
