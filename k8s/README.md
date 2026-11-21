@@ -260,9 +260,25 @@ kubectl -n truckcar create secret generic truckcar-secrets \
   --from-literal=tracking-link-secret="$TRUCKCAR_TRACKING_LINK_SECRET" \
   --from-literal=notifications-api-key="$TRUCKCAR_NOTIFICATIONS_API_KEY" \
   --from-literal=azure-openai-key="${AZURE_OPENAI_KEY:-}" \
-  --from-literal=here-api-key="${HERE_API_KEY:-}"
+  --from-literal=here-api-key="${HERE_API_KEY:-}" \
+  --from-literal=smtp-username="${SMTP_USERNAME:-}" \
+  --from-literal=smtp-password="${SMTP_PASSWORD:-}"
 kubectl apply -k k8s/overlays/aws-eks-lab
 ```
+
+**Valores de la cuenta en un overlay local.** No se suben a git: por ejemplo, en `k8s/overlays/lab-local/`, excluido en
+`.git/info/exclude`, con `resources: [../aws-eks-lab]`. Allí van:
+- el host de RDS, el bucket, el endpoint de Azure y los orígenes;
+- la cuenta en las imágenes de ECR;
+- el tema SNS y el bucket de voz de `notifications`;
+- `TRUCKCAR_ADMIN_EMAIL`, el mismo del `.env`. Sin él, `user-identity` no crea el administrador y
+  `scripts/demo-lab/preparar-demo.mjs` no puede iniciar sesión;
+- `SMTP_HOST`, `SMTP_PORT` y `TRUCKCAR_MAIL_FROM`, para el correo de recuperación de contraseña.
+
+**Orígenes y la APK.** Con el perfil `prod`, el api-gateway no arranca si un origen contiene `localhost`, y la APK de
+Capacitor llama por defecto desde `https://localhost`. Para el clúster:
+- se arma la APK con `TRUCKCAR_APP_HOSTNAME=app.truckcar.co`, que hace que llame desde `https://app.truckcar.co`;
+- ese mismo origen se agrega a `TRUCKCAR_CORS_ALLOWED_ORIGINS` y `TRUCKCAR_WEBSOCKET_ALLOWED_ORIGINS`.
 
 **HTTPS:** el ALB escucha en HTTP:80 sobre su nombre DNS, porque el Learner Lab no trae dominio ni certificado de ACM.
 En el teléfono, la PWA **necesita HTTPS** para el GPS y el Service Worker. El Learner Lab **no permite CloudFront**
