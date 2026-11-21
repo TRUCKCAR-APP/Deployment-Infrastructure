@@ -84,6 +84,19 @@ spec:
                   name: truckcar-secrets
                   key: admin-password
                   optional: true
+            # Correo del código de recuperación de contraseña. Sin SMTP_HOST no se envía ningún correo.
+            - name: SMTP_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: truckcar-secrets
+                  key: smtp-username
+                  optional: true
+            - name: SMTP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: truckcar-secrets
+                  key: smtp-password
+                  optional: true
           # Spring Boot activa los grupos de health liveness/readiness al detectar Kubernetes.
           startupProbe:
             httpGet:

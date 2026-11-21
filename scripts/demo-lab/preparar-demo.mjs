@@ -61,7 +61,8 @@ const DEMO = {
 const KNOWN_TEST_DRIVERS = [{ email: 'conductor.prueba@truckcar.lab', password: env.TRUCKCAR_TEST_DRIVER_PASSWORD }];
 const RESTRICTION_PREFIX = 'DEMO-GALIBO';
 
-const admin = await login('admin@truckcar.lab', env.TRUCKCAR_ADMIN_PASSWORD);
+// El correo del administrador es el de TRUCKCAR_ADMIN_EMAIL (con el que user-identity lo crea al arrancar).
+const admin = await login(env.TRUCKCAR_ADMIN_EMAIL || 'admin@truckcar.lab', env.TRUCKCAR_ADMIN_PASSWORD);
 
 console.log('\n1. Cuentas');
 const users = {};
