@@ -88,6 +88,8 @@ spec:
               value: "http://route-ai-agent:8086"
             - name: TRUCKCAR_NOTIFICATIONS_URL
               value: "http://notifications:8087"
+            - name: TRUCKCAR_VOICE_AI_ASSISTANT_URL
+              value: "http://voice-ai-assistant:8088"
           # Spring Boot activa los grupos de health liveness/readiness al detectar Kubernetes.
           startupProbe:
             httpGet:

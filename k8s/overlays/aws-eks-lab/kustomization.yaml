@@ -28,7 +28,7 @@ patches:
   # región) y descarga si cambió.
   - target:
       kind: Deployment
-      name: ^(user-identity|api-gateway|fleets-drivers|community-alerts|load-allocation|routing-restrictions|ai-fleet-allocation|route-ai-agent|notifications|frontend)$
+      name: ^(user-identity|api-gateway|fleets-drivers|community-alerts|load-allocation|routing-restrictions|ai-fleet-allocation|route-ai-agent|voice-ai-assistant|notifications|frontend)$
     patch: |-
       - op: add
         path: /spec/template/spec/containers/0/imagePullPolicy
@@ -55,7 +55,7 @@ patches:
   # 100m). Con 3 min (36 x 5 s) el startupProbe las reiniciaba antes de terminar y entraban en bucle; 5 min (60 x 5 s).
   - target:
       kind: Deployment
-      name: ^(user-identity|api-gateway|fleets-drivers|community-alerts|load-allocation|routing-restrictions|ai-fleet-allocation|route-ai-agent|notifications)$
+      name: ^(user-identity|api-gateway|fleets-drivers|community-alerts|load-allocation|routing-restrictions|ai-fleet-allocation|route-ai-agent|voice-ai-assistant|notifications)$
     patch: |-
       - op: replace
         path: /spec/template/spec/containers/0/startupProbe/failureThreshold
@@ -63,7 +63,7 @@ patches:
   # Servicios Spring: 100m de CPU reservada (2 t3.large tienen ~3,8 vCPU asignables) y memoria acotada.
   - target:
       kind: Deployment
-      name: ^(user-identity|api-gateway|fleets-drivers|community-alerts|load-allocation|routing-restrictions|ai-fleet-allocation|route-ai-agent|notifications)$
+      name: ^(user-identity|api-gateway|fleets-drivers|community-alerts|load-allocation|routing-restrictions|ai-fleet-allocation|route-ai-agent|voice-ai-assistant|notifications)$
     patch: |-
       - op: replace
         path: /spec/template/spec/containers/0/resources/requests/cpu
@@ -100,6 +100,9 @@ images:
     newTag: main
   - name: ghcr.io/truckcar-app/notifications
     newName: 123456789012.dkr.ecr.us-east-1.amazonaws.com/truckcar/notifications
+    newTag: main
+  - name: ghcr.io/truckcar-app/voice-ai-assistant
+    newName: 123456789012.dkr.ecr.us-east-1.amazonaws.com/truckcar/voice-ai-assistant
     newTag: main
   - name: ghcr.io/truckcar-app/truckcar-frontend
     newName: 123456789012.dkr.ecr.us-east-1.amazonaws.com/truckcar/truckcar-frontend
