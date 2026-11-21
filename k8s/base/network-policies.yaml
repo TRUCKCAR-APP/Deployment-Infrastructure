@@ -52,6 +52,7 @@ spec:
         - port: 8085
         - port: 8086
         - port: 8087
+        - port: 8088
 ---
 # PgBouncer solo para los backends (db-init conecta directo a la base gestionada).
 apiVersion: networking.k8s.io/v1
@@ -115,5 +116,6 @@ spec:
         - port: 8085
         - port: 8086
         - port: 8087
+        - port: 8088
         - port: 9127
         - port: 8888

@@ -21,6 +21,7 @@ resources:
   - apps/routing-restrictions.yaml
   - apps/ai-fleet-allocation.yaml
   - apps/route-ai-agent.yaml
+  - apps/voice-ai-assistant.yaml
   - apps/notifications.yaml
   - apps/frontend.yaml
   - ingress.yaml
@@ -32,7 +33,7 @@ resources:
 patches:
   - target:
       kind: Deployment
-      name: ^(user-identity|api-gateway|fleets-drivers|community-alerts|load-allocation|routing-restrictions|ai-fleet-allocation|route-ai-agent|notifications|frontend)$
+      name: ^(user-identity|api-gateway|fleets-drivers|community-alerts|load-allocation|routing-restrictions|ai-fleet-allocation|route-ai-agent|voice-ai-assistant|notifications|frontend)$
     patch: |-
       - op: add
         path: /spec/template/spec/containers/0/lifecycle
@@ -62,6 +63,8 @@ images:
   - name: ghcr.io/truckcar-app/route-ai-agent
     newTag: main
   - name: ghcr.io/truckcar-app/notifications
+    newTag: main
+  - name: ghcr.io/truckcar-app/voice-ai-assistant
     newTag: main
   - name: ghcr.io/truckcar-app/truckcar-frontend
     newTag: main
