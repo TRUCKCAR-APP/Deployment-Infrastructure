@@ -62,17 +62,33 @@ resource "random_id" "bucket_suffix" {
   byte_length = 3
 }
 
-resource "aws_s3_bucket" "media" {
+# El bucket no puede ser un aws_s3_bucket en el Learner Lab: después de crearlo, el proveedor lee su configuración de
+# Object Lock y la SCP del laboratorio niega s3:GetBucketObjectLockConfiguration (falla el apply y todo plan posterior).
+# Se crea con la CLI (create-bucket es idempotente en us-east-1) y se borra con su contenido al destruir; su
+# configuración de seguridad sí son recursos de Terraform, que no leen Object Lock.
+resource "terraform_data" "bucket" {
   for_each = toset(["pod-media", "voice"])
 
-  bucket        = "truckcar-lab-${each.key}-${random_id.bucket_suffix.hex}"
-  force_destroy = true
+  input = "truckcar-lab-${each.key}-${random_id.bucket_suffix.hex}"
+
+  provisioner "local-exec" {
+    command = "aws s3api create-bucket --bucket ${self.input} --region ${var.region}"
+  }
+
+  provisioner "local-exec" {
+    when    = destroy
+    command = "aws s3 rb s3://${self.input} --force"
+  }
+}
+
+locals {
+  buckets = { for k, b in terraform_data.bucket : k => b.output }
 }
 
 resource "aws_s3_bucket_public_access_block" "media" {
-  for_each = aws_s3_bucket.media
+  for_each = local.buckets
 
-  bucket                  = each.value.id
+  bucket                  = each.value
   block_public_acls       = true
   block_public_policy     = true
   ignore_public_acls      = true
@@ -80,9 +96,9 @@ resource "aws_s3_bucket_public_access_block" "media" {
 }
 
 resource "aws_s3_bucket_ownership_controls" "media" {
-  for_each = aws_s3_bucket.media
+  for_each = local.buckets
 
-  bucket = each.value.id
+  bucket = each.value
 
   rule {
     object_ownership = "BucketOwnerEnforced"
@@ -90,9 +106,9 @@ resource "aws_s3_bucket_ownership_controls" "media" {
 }
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "media" {
-  for_each = aws_s3_bucket.media
+  for_each = local.buckets
 
-  bucket = each.value.id
+  bucket = each.value
 
   rule {
     apply_server_side_encryption_by_default {

@@ -181,6 +181,9 @@ un clúster AKS real**: en especial los usuarios no root de Kafka (1000), Redis 
 
 ## AWS Academy Learner Lab (`overlays/aws-eks-lab`)
 
+**La infraestructura de AWS (VPC, EKS, nodos, RDS, S3, SNS y ECR) se crea con Terraform:** `terraform/aws-lab`
+(ver su README). Lo que sigue en esta sección es lo de dentro del clúster y los límites del laboratorio.
+
 Entorno de menos de 30 días en Amazon EKS con las restricciones del Learner Lab: **no se pueden crear roles de IAM ni
 proveedores OIDC**, así que no hay IRSA ni EKS Pod Identity.
 
