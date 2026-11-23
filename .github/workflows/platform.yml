@@ -80,6 +80,7 @@ jobs:
 
       - name: Terraform (formato y validación de terraform/aws-lab)
         run: |
+          test -f terraform/aws-lab/versions.tf || { echo "::error::terraform/aws-lab no está en el repositorio"; exit 1; }
           docker run --rm -v "$PWD/terraform/aws-lab:/w" -w /w hashicorp/terraform:1.10.5 fmt -check -recursive -diff
           docker run --rm -v "$PWD/terraform/aws-lab:/w" -w /w hashicorp/terraform:1.10.5 init -backend=false -input=false
           docker run --rm -v "$PWD/terraform/aws-lab:/w" -w /w hashicorp/terraform:1.10.5 validate
