@@ -280,6 +280,14 @@ Capacitor llama por defecto desde `https://localhost`. Para el clúster:
 - se arma la APK con `TRUCKCAR_APP_HOSTNAME=app.truckcar.co`, que hace que llame desde `https://app.truckcar.co`;
 - ese mismo origen se agrega a `TRUCKCAR_CORS_ALLOWED_ORIGINS` y `TRUCKCAR_WEBSOCKET_ALLOWED_ORIGINS`.
 
+**Mapa (Stadia).** Sin clave, Stadia solo sirve teselas a `localhost`. La clave va en el `.env` como
+`TRUCKCAR_MAP_API_KEY` y se inyecta al construir:
+- web: `docker build --build-arg TRUCKCAR_MAP_API_KEY="$TRUCKCAR_MAP_API_KEY" ...` (la imagen del CI no la trae);
+- APK: `npm run build:apk` la lee del entorno, junto a `TRUCKCAR_API_BASE_URL` y `TRUCKCAR_APP_HOSTNAME`.
+
+Sin clave, o si Stadia deja de responder (clave vencida, cupo agotado), el mapa pasa solo al mapa gris de Esri, que no
+pide clave.
+
 **HTTPS:** el ALB escucha en HTTP:80 sobre su nombre DNS, porque el Learner Lab no trae dominio ni certificado de ACM.
 En el teléfono, la PWA **necesita HTTPS** para el GPS y el Service Worker. El Learner Lab **no permite CloudFront**
 (`cloudfront:CreateDistribution` denegado), así que para pruebas se usa un Quick Tunnel de Cloudflare
