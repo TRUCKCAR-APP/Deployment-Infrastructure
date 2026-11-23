@@ -17,6 +17,14 @@ resources:
   - messaging.yaml
   - network-policies.yaml
 patches:
+  # Las imágenes de ECR van con la etiqueta :main, que se mueve en cada publicación. Con la política por defecto
+  # (IfNotPresent) un nodo que ya la tiene no descarga la nueva y "rollout restart" levanta la versión vieja.
+  - target:
+      kind: Deployment
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: Always
   - path: platform-config.yaml
   - path: service-healthchecks.yaml
   - target:
