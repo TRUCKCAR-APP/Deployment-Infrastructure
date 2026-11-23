@@ -61,6 +61,11 @@ jobs:
         run: |
           docker run --rm --entrypoint promtool -v "$PWD/docker/observability/prometheus:/etc/prometheus:ro" \
             prom/prometheus:v2.55.1 check config /etc/prometheus/prometheus.yml
+          # Prometheus del Learner Lab (k8s/overlays/aws-eks-lab/optional/monitoring) con las mismas reglas.
+          docker run --rm --entrypoint promtool \
+            -v "$PWD/k8s/overlays/aws-eks-lab/optional/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro" \
+            -v "$PWD/docker/observability/prometheus/rules:/etc/prometheus/rules:ro" \
+            prom/prometheus:v2.55.1 check config /etc/prometheus/prometheus.yml
 
       - name: OpenTelemetry Collector
         run: |
@@ -81,10 +86,12 @@ jobs:
           for overlay in aws-eks aws-eks-lab azure-aks azure-students; do
             kubectl kustomize "k8s/overlays/$overlay" > "rendered/$overlay.yaml"
           done
+          # Monitoreo opcional del lab: lee tableros y reglas de docker/observability (una sola fuente).
+          kubectl kustomize --load-restrictor LoadRestrictionsNone k8s/overlays/aws-eks-lab/optional/monitoring > rendered/monitoring-lab.yaml
           docker run --rm -v "$PWD/rendered:/work:ro" ghcr.io/yannh/kubeconform:v0.6.7 -strict -summary \
             -kubernetes-version 1.30.0 -schema-location default \
             -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
-            /work/aws-eks.yaml /work/aws-eks-lab.yaml /work/azure-aks.yaml /work/azure-students.yaml
+            /work/aws-eks.yaml /work/aws-eks-lab.yaml /work/azure-aks.yaml /work/azure-students.yaml /work/monitoring-lab.yaml
 
   isolation:
     name: Stack completo y aislamiento de red

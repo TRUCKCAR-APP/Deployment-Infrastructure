@@ -288,6 +288,25 @@ Capacitor llama por defecto desde `https://localhost`. Para el clúster:
 Sin clave, o si Stadia deja de responder (clave vencida, cupo agotado), el mapa pasa solo al mapa gris de Esri, que no
 pide clave.
 
+**Monitoreo en el lab (opcional).** Prometheus y Grafana livianos (`overlays/aws-eks-lab/optional/monitoring`), con
+los mismos tableros y las 7 alertas de `docker/observability`. Sin kube-prometheus-stack (no cabe en 2 × t3.large) ni
+Tempo (el lab no exporta trazas: el panel «Trazas recientes de ingesta offline» queda vacío). Unos 400 MiB de memoria
+en total. No se publica en Internet: se entra con port-forward. La contraseña de `admin` sale del `.env`
+(`TRUCKCAR_GRAFANA_ADMIN_PASSWORD`); sin el Secret, Grafana no arranca.
+
+```bash
+set -a; . ./.env; set +a
+kubectl create namespace truckcar-monitoring --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n truckcar-monitoring create secret generic grafana-admin \
+  --from-literal=password="$TRUCKCAR_GRAFANA_ADMIN_PASSWORD" --dry-run=client -o yaml | kubectl apply -f -
+kubectl kustomize --load-restrictor LoadRestrictionsNone k8s/overlays/aws-eks-lab/optional/monitoring | kubectl apply -f -
+kubectl -n truckcar-monitoring port-forward svc/grafana 3000:3000      # http://localhost:3000, usuario admin
+kubectl -n truckcar-monitoring port-forward svc/prometheus 9090:9090   # alertas en http://localhost:9090/alerts
+```
+
+Los datos se guardan en `emptyDir` (2 días, máximo 1 GB): se pierden si el pod se reinicia o se apaga el lab, pero no
+queda un disco EBS amarrado a una zona.
+
 **HTTPS:** el ALB escucha en HTTP:80 sobre su nombre DNS, porque el Learner Lab no trae dominio ni certificado de ACM.
 En el teléfono, la PWA **necesita HTTPS** para el GPS y el Service Worker. El Learner Lab **no permite CloudFront**
 (`cloudfront:CreateDistribution` denegado), así que para pruebas se usa un Quick Tunnel de Cloudflare

@@ -1,0 +1,42 @@
+# Prometheus y Grafana livianos para el Learner Lab (2 × t3.large): los mismos tableros y las mismas 7 alertas de
+# docker/observability, sin kube-prometheus-stack (no cabe) y sin Tempo (el lab no exporta trazas).
+#
+# Los tableros y las reglas se leen de docker/observability (una sola fuente), por eso se construye con
+# --load-restrictor LoadRestrictionsNone:
+#
+#   kubectl create namespace truckcar-monitoring --dry-run=client -o yaml | kubectl apply -f -
+#   kubectl -n truckcar-monitoring create secret generic grafana-admin \
+#     --from-literal=password="$TRUCKCAR_GRAFANA_ADMIN_PASSWORD" --dry-run=client -o yaml | kubectl apply -f -
+#   kubectl kustomize --load-restrictor LoadRestrictionsNone k8s/overlays/aws-eks-lab/optional/monitoring | kubectl apply -f -
+#   kubectl -n truckcar-monitoring port-forward svc/grafana 3000:3000     # http://localhost:3000 (usuario admin)
+#
+# Nada de esto se publica en Internet: se entra con port-forward. Los datos viven en emptyDir (2 días): si el pod se
+# reinicia o se apaga el lab, el historial se pierde, pero no queda un disco EBS amarrado a una zona.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - prometheus.yaml
+  - grafana.yaml
+
+configMapGenerator:
+  - name: prometheus-config
+    namespace: truckcar-monitoring
+    files:
+      - prometheus.yml
+  - name: prometheus-rules
+    namespace: truckcar-monitoring
+    files:
+      - ../../../../../docker/observability/prometheus/rules/truckcar-alerts.yml
+  - name: grafana-provisioning
+    namespace: truckcar-monitoring
+    files:
+      - datasources.yaml=grafana-datasources.yaml
+      - dashboards.yaml=grafana-dashboards.yaml
+  - name: grafana-dashboards
+    namespace: truckcar-monitoring
+    files:
+      - ../../../../../docker/observability/grafana/dashboards/truckcar-platform.json
+      - ../../../../../docker/observability/grafana/dashboards/truckcar-jvm.json
+      - ../../../../../docker/observability/grafana/dashboards/truckcar-pgbouncer.json

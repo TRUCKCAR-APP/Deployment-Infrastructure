@@ -1,0 +1,9 @@
+# La etiqueta truckcar.io/monitoring=true es la que deja pasar la NetworkPolicy allow-monitoring-scrape de base
+# hacia /actuator/prometheus de los pods de truckcar.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: truckcar-monitoring
+  labels:
+    truckcar.io/monitoring: "true"
+    app.kubernetes.io/part-of: truckcar-monitoring
