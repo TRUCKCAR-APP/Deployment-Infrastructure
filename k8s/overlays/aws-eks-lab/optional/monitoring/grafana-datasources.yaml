@@ -1,0 +1,13 @@
+# Prometheus del mismo namespace. Con el mismo uid que en docker-compose (prometheus): los tableros sirven sin cambios.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: 15s
