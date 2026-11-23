@@ -22,12 +22,12 @@ output "rds_address" {
 
 output "pod_media_bucket" {
   description = "TRUCKCAR_S3_BUCKET (evidencias de entrega)."
-  value       = aws_s3_bucket.media["pod-media"].bucket
+  value       = terraform_data.bucket["pod-media"].output
 }
 
 output "voice_bucket" {
   description = "AWS_S3_BUCKET de notifications (audio de voz)."
-  value       = aws_s3_bucket.media["voice"].bucket
+  value       = terraform_data.bucket["voice"].output
 }
 
 output "sns_topic_arn" {
