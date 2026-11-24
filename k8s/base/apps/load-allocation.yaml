@@ -72,6 +72,9 @@ spec:
                   key: tracking-link-secret
             - name: TRUCKCAR_SERVICES_FLEETS_DRIVERS_URL
               value: "http://fleets-drivers-api:8081"
+            # Cargas de la transportadora: su empresa la confirma User-Identity con el token del usuario.
+            - name: TRUCKCAR_SERVICES_USER_IDENTITY_URL
+              value: "http://user-identity:8080"
           # Spring Boot activa los grupos de health liveness/readiness al detectar Kubernetes.
           startupProbe:
             httpGet:
