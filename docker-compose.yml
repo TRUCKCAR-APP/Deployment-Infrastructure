@@ -367,6 +367,8 @@ services:
       SPRING_DATASOURCE_PASSWORD: ${TRUCKCAR_DB_PASSWORD_COMMUNITY_ALERTS:?Defina TRUCKCAR_DB_PASSWORD_COMMUNITY_ALERTS en .env (scripts/init-env.sh)}
       # SOS sin GPS: se completa con la última posición del conductor en fleets-drivers (llamada interna).
       TRUCKCAR_SERVICES_FLEETS_DRIVERS_URL: ${TRUCKCAR_FLEETS_DRIVERS_URL:-http://fleets-drivers:8081}
+      # SOS de la flota de una transportadora: sus conductores los confirma User-Identity con el token del usuario.
+      TRUCKCAR_SERVICES_USER_IDENTITY_URL: ${TRUCKCAR_USER_IDENTITY_URL:-http://user-identity:8080}
 
   load-allocation:
     <<: *spring-service
