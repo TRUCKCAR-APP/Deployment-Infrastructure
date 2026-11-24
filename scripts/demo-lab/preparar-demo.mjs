@@ -138,6 +138,8 @@ for (const load of loads) {
     }
     // La entrega exige la firma de quien recibe (como en la app): se sube una imagen de cierre y se referencia.
     const driverToken = await driverLogin();
+    // La entrega también exige la recogida en el punto de cargue (Load-Allocation): se registra antes (idempotente).
+    if (!load.pickedUpAt) await api('PATCH', `/loads/${load.id}/pickup/complete`, { token: driverToken });
     const signature = await uploadClosingSignature(load.id, driverToken);
     await api('PATCH', `/loads/${load.id}/trip/deliver`, {
       token: driverToken, body: { receiverName: 'Cierre de datos de prueba', notes: 'Preparación de la demostración', signature }
