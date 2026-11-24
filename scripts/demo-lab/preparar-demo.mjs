@@ -2,7 +2,9 @@
 // Deja el entorno desplegado (EKS del Learner Lab) listo para la demostración de punta a punta.
 //
 // Qué hace, siempre por la API pública del gateway y con la cuenta ADMIN:
-//   1. Crea o actualiza las cuentas de la demo (coordinador, generador y tres conductores), activas y con su rol.
+//   1. Crea o actualiza las cuentas de la demo (coordinador, generador, dos transportadoras y tres conductores),
+//      activas y con su rol, y afilia los conductores: Andrés y Laura a Transportes Andinos, Jorge a Carga Pacífico
+//      (cada empresa ve en «Mi flota» solo a los suyos).
 //   2. Registra el vehículo, el estado ACTIVO y la posición de tres conductores de ejemplo, en Medellín, Cali y
 //      Bucaramanga (cualquier conductor nuevo lo hace desde la pestaña Vehículo de la app).
 //   3. Cierra lo que quedó abierto: cancela las cargas sin viaje, entrega las que siguen en tránsito con un conductor
@@ -45,6 +47,15 @@ const DESTINATION = coords(process.env.DEMO_DESTINATION, [5.5353, -73.3678]);
 const DEMO = {
   coordinator: { email: 'torre@truckcar.demo', firstName: 'Tomás', lastName: 'Torre', role: 'COORDINADOR' },
   generator: { email: 'generador@truckcar.demo', firstName: 'Gabriela', lastName: 'Castro', role: 'GENERADOR' },
+  // Dos empresas para mostrar el aislamiento: ninguna ve a los conductores de la otra.
+  companies: [
+    { email: 'andinos@truckcar.demo', firstName: 'Andrea', lastName: 'Salazar', role: 'TRANSPORTADORA',
+      companyName: 'Transportes Andinos S.A.S.', companyNit: '9001234561',
+      drivers: ['conductor1@truckcar.demo', 'conductor2@truckcar.demo'] },
+    { email: 'pacifico@truckcar.demo', firstName: 'Carlos', lastName: 'Ibarra', role: 'TRANSPORTADORA',
+      companyName: 'Carga Pacífico S.A.S.', companyNit: '9007654321',
+      drivers: ['conductor3@truckcar.demo'] }
+  ],
   drivers: [
     // Lejos de Bogotá a propósito: en una carga que sale de Bogotá gana el conductor que se registre allí (el
     // profesor) y estos aparecen detrás, con su distancia en vacío. En una carga que sale de su ciudad, ganan ellos.
@@ -66,8 +77,27 @@ const admin = await login(env.TRUCKCAR_ADMIN_EMAIL || 'admin@truckcar.lab', env.
 
 console.log('\n1. Cuentas');
 const users = {};
-for (const account of [DEMO.coordinator, DEMO.generator, ...DEMO.drivers]) {
+for (const account of [DEMO.coordinator, DEMO.generator, ...DEMO.companies, ...DEMO.drivers]) {
   users[account.email] = await ensureUser(account);
+}
+
+console.log('\n1b. Empresas transportadoras y afiliación de sus conductores');
+for (const c of DEMO.companies) {
+  const companyToken = await login(c.email, PASSWORD);
+  const company = (await api('GET', '/companies/me', { token: companyToken })).json;
+  const current = list(await api('GET', '/companies/me/drivers', { token: companyToken }));
+  for (const email of c.drivers) {
+    const driver = users[email];
+    const known = current.find(d => d.id === driver.id);
+    if (!known || known.affiliationStatus !== 'ACTIVA') {
+      // Como en la app: el conductor elige la empresa (queda PENDIENTE) y la empresa lo aprueba.
+      if (!known || known.affiliationStatus !== 'PENDIENTE') {
+        await api('PUT', '/users/me/affiliation', { token: await login(email, PASSWORD), body: { driverType: 'EMPRESA', companyId: company.id } });
+      }
+      await api('PATCH', `/companies/me/drivers/${driver.id}/affiliation`, { token: companyToken, body: { status: 'ACTIVA' } });
+    }
+    console.log(`   ${company.name}: ${email} (afiliación ACTIVA)`);
+  }
 }
 
 console.log('\n2. Vehículos y posición de los conductores');
@@ -149,7 +179,8 @@ async function ensureUser(account) {
   const role = account.role || 'CONDUCTOR';
   const registerRole = role === 'COORDINADOR' ? 'GENERADOR' : role;
   const res = await api('POST', '/auth/register', {
-    body: { email: account.email, password: PASSWORD, firstName: account.firstName, lastName: account.lastName, role: registerRole },
+    body: { email: account.email, password: PASSWORD, firstName: account.firstName, lastName: account.lastName, role: registerRole,
+      ...(role === 'TRANSPORTADORA' ? { companyName: account.companyName, companyNit: account.companyNit } : {}) },
     accept: [409]
   });
   const user = await findUser(account.email);
