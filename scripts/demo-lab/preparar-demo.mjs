@@ -136,8 +136,11 @@ for (const load of loads) {
       console.log(`   carga ${load.id} en tránsito con un conductor ajeno a la demo: se deja como está`);
       continue;
     }
+    // La entrega exige la firma de quien recibe (como en la app): se sube una imagen de cierre y se referencia.
+    const driverToken = await driverLogin();
+    const signature = await uploadClosingSignature(load.id, driverToken);
     await api('PATCH', `/loads/${load.id}/trip/deliver`, {
-      token: await driverLogin(), body: { receiverName: 'Cierre de datos de prueba', notes: 'Preparación de la demostración' }
+      token: driverToken, body: { receiverName: 'Cierre de datos de prueba', notes: 'Preparación de la demostración', signature }
     });
     console.log(`   carga ${load.id} en tránsito entregada`);
     closed++;
@@ -191,6 +194,19 @@ async function ensureUser(account) {
   await login(account.email, PASSWORD);
   console.log(`   ${role.padEnd(11)} ${account.email} ${res.status === 409 ? '(ya existía)' : '(creada)'}`);
   return { ...user, role };
+}
+
+/** Firma de cierre (PNG de 1×1) subida como en la app: URL de subida, PUT al almacenamiento y la referencia. */
+async function uploadClosingSignature(loadId, token) {
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+  const sha256 = (await import('node:crypto')).createHash('sha256').update(png).digest('hex');
+  const file = { kind: 'SIGNATURE', contentType: 'image/png', sizeBytes: png.length, sha256 };
+  const res = await api('POST', `/loads/${loadId}/proof-of-delivery/upload-urls`, { token, body: { files: [file] } });
+  const target = res.json.uploads.find(u => u.kind === 'SIGNATURE');
+  const url = target.uploadUrl.startsWith('/') ? new URL(BASE).origin + target.uploadUrl : target.uploadUrl;
+  const put = await fetch(url, { method: target.method || 'PUT', headers: target.headers || {}, body: png });
+  if (!put.ok) fail(`El almacenamiento rechazó la firma de cierre de la carga ${loadId} (${put.status})`);
+  return { objectKey: target.objectKey, sha256, contentType: 'image/png', sizeBytes: png.length };
 }
 
 async function findUser(email) {
