@@ -345,6 +345,8 @@ services:
       SPRING_DATA_REDIS_HOST: redis
       # Telemetría: verifica con Load-Allocation la propiedad de una carga al suscribirse a /topic/trip.{loadId}.
       TRUCKCAR_SERVICES_LOAD_ALLOCATION_URL: ${TRUCKCAR_LOAD_ALLOCATION_URL:-http://load-allocation:8083}
+      # «Mi flota» de la transportadora: su empresa la confirma User-Identity con el token del usuario.
+      TRUCKCAR_SERVICES_USER_IDENTITY_URL: ${TRUCKCAR_USER_IDENTITY_URL:-http://user-identity:8080}
       TRUCKCAR_STOMP_RELAY_ENABLED: "true"
       TRUCKCAR_STOMP_RELAY_HOST: rabbitmq
       TRUCKCAR_STOMP_RELAY_LOGIN: ${TRUCKCAR_STOMP_RELAY_LOGIN:-truckcar}
