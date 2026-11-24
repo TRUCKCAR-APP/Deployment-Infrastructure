@@ -59,7 +59,9 @@ flowchart LR
 ```
 
 El despliegue en AWS (EKS), el stack por capa, los eventos de Kafka y la telemetría en vivo están en
-[docs/arquitectura/ARQUITECTURA.md](docs/arquitectura/ARQUITECTURA.md).
+[docs/arquitectura/ARQUITECTURA.md](docs/arquitectura/ARQUITECTURA.md). Las decisiones técnicas justificadas (por qué
+STOMP, bases de datos, balanceo y disponibilidad) y los algoritmos de asignación de cargas y de rutas para camión están
+en [docs/arquitectura/DECISIONES_Y_ALGORITMOS.md](docs/arquitectura/DECISIONES_Y_ALGORITMOS.md).
 
 | Componente | Acceso desde el host | Dentro de `truckcar-network` |
 |---|---|---|
@@ -225,7 +227,7 @@ comprobaciones de `verify-isolation.sh`.
 | Workflow | Cuándo | Qué hace |
 |---|---|---|
 | `.github/workflows/ecr-image.yml` (reutilizable) | Lo llama el job **ecr** del `ci.yml` de cada repo, en cada push a `main` | Construye una imagen (Dockerfile común de Spring o el propio de la PWA) y la publica como `<cuenta>.dkr.ecr.<región>.amazonaws.com/truckcar/<imagen>` con las etiquetas `:<commit>` y `:main`. La primera vez crea el repositorio de ECR (escaneo al publicar). |
-| `.github/workflows/ecr-all.yml` (manual) | Al iniciar un laboratorio nuevo, o si hubo pushes con las credenciales vencidas | Publica las 10 imágenes desde `main` de cada repo (o la referencia indicada) |
+| `.github/workflows/ecr-all.yml` (manual) | Al iniciar un laboratorio nuevo, o si hubo pushes con las credenciales vencidas | Publica las 11 imágenes desde `main` de cada repo (o la referencia indicada) |
 
 **Credenciales:** el Learner Lab no permite crear el rol OIDC para GitHub Actions, así que se usan las credenciales
 temporales de la sesión.

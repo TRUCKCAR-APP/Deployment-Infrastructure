@@ -4,6 +4,8 @@ Cinco vistas de la plataforma tal como está hoy: el despliegue en AWS (EKS en A
 capa, los eventos entre servicios, el flujo de la telemetría en vivo y la frontera entre la IA, el motor determinista y
 la capa sin señal. La red local de Docker está en el
 [README](../../README.md#topología-de-red) y el escalamiento en [ESCALAMIENTO_Y_ESTABILIDAD.md](ESCALAMIENTO_Y_ESTABILIDAD.md).
+Las decisiones técnicas justificadas (STOMP, bases de datos, balanceo) y los algoritmos de asignación y de rutas están en
+[DECISIONES_Y_ALGORITMOS.md](DECISIONES_Y_ALGORITMOS.md).
 
 ## 1. Despliegue en AWS (overlay `k8s/overlays/aws-eks-lab`)
 
@@ -16,7 +18,7 @@ flowchart LR
     tunnel["Túnel HTTPS de pruebas<br/>(Cloudflare Quick Tunnel)"]
 
     subgraph aws["AWS · us-east-1 (Learner Lab, LabRole)"]
-        ecr[("Amazon ECR<br/>10 imágenes")]
+        ecr[("Amazon ECR<br/>11 imágenes")]
         alb["Application Load Balancer<br/>HTTP :80 · health checks por servicio"]
         subgraph vpc["VPC 192.168.0.0/16 (eksctl)"]
             subgraph eks["Amazon EKS 1.36 · 2 nodos EC2 t3.large"]
@@ -33,6 +35,7 @@ flowchart LR
                     ai["ai-fleet-allocation"]
                     ra["route-ai-agent"]
                     nt["notifications"]
+                    va["voice-ai-assistant"]
                 end
                 subgraph data["Datos y mensajería en el clúster (EBS gp3)"]
                     pb[["PgBouncer"]]
@@ -53,7 +56,7 @@ flowchart LR
     desk -- HTTP --> alb
     alb -- "/api, /ws-telemetry" --> gw
     alb -- "/" --> fe
-    gw --> ui & fd & ca & la & rr & ai & ra & nt
+    gw --> ui & fd & ca & la & rr & ai & ra & nt & va
     gw -- tickets del WebSocket --> rd
     fd -- posición en vivo --> rd
     fd -- STOMP --> rmq
@@ -61,7 +64,7 @@ flowchart LR
     ui & fd & ca & la & rr & ai & ra & nt <--> kf
     la -- URLs prefirmadas --> s3
     nt --> sns & s3
-    ra -- HTTPS --> aoai
+    ra & va -- HTTPS --> aoai
     nt -. SynthesizeSpeech .-> ai_svc
     ecr -. imágenes .-> eks
 ```
@@ -153,7 +156,7 @@ está bloqueada. Si el modelo falla o no está disponible, el sistema sigue func
 | Capa | Dónde vive | Qué decide | Qué **no** decide | Si falla |
 |---|---|---|---|---|
 | **IA (NLP)** | route-ai-agent: `ModelAlertInterpreter` con Azure OpenAI `gpt-4.1-mini` (Bedrock como alternativa) | Si el texto de una alerta describe un bloqueo (`roadBlockage`), su severidad y una confianza de 0 a 1. Solo con confianza ≥ 0,70 se pide replanteo | Rutas, asignaciones, gálibos ni pesos | Fallback a `RuleBasedAlertInterpreter` (palabras clave) con Resilience4j; métricas `truckcar_ai_requests_total` y `truckcar_ai_fallback_total` |
-| **Motor determinista** | Routing-Restrictions (PostGIS: `validate-route`, `validate-compatibility`), AI-powered-fleet-allocation (`FleetScoringOptimizer`, `OsrmRouteRestrictionScreen`), OSRM, route-ai-agent (`TruckRoutePlanner` sobre HERE Routing v8 con perfil de camión) | Si una ruta es transitable para la altura y el peso del vehículo; a qué conductor se propone la carga (0,5·cercanía + 0,3·capacidad + 0,2·calificación, tras los filtros de cuenta verificada, ocupado, gálibo/peso de la ruta, RUNT, cadena de frío, tipo y capacidad); qué desvío se elige | La interpretación del texto libre | Fail-open documentado: sin Routing-Restrictions se asigna sin el filtro de ruta, con la métrica `component=route-restrictions`; la PWA avisa que la ruta no se pudo validar |
+| **Motor determinista** | Routing-Restrictions (`validate-route`: prefiltro SQL por rectángulo y proyección exacta sobre la polilínea, corredor de 60 m; `validate-compatibility`), AI-powered-fleet-allocation (`FleetScoringOptimizer`, `OsrmRouteRestrictionScreen`), OSRM, route-ai-agent (`TruckRoutePlanner` sobre HERE Routing v8 con perfil de camión) | Si una ruta es transitable para la altura y el peso del vehículo; a qué conductor se propone la carga (0,5·cercanía + 0,3·capacidad + 0,2·calificación, tras los filtros de cuenta verificada, ocupado, gálibo/peso de la ruta, RUNT, cadena de frío, tipo y capacidad); qué desvío se elige | La interpretación del texto libre | Fail-open documentado: sin Routing-Restrictions se asigna sin el filtro de ruta, con la métrica `component=route-restrictions`; la PWA avisa que la ruta no se pudo validar |
 | **Capa sin señal** | PWA: `offlineQueue.js` (IndexedDB `truckcar-offline`), `routeStore.js` (`truckcar-route`), `tileStore.js` + Service Worker (teselas ya vistas, 100 MB) | Seguir guiando con la última ruta validada, avisar de gálibos a 3 km y de los puentes bajos vecinos fuera de ruta, encolar posiciones y entregas para `/sync/batch` | Nada nuevo: no recalcula rutas ni valida restricciones sin red, solo usa lo que el motor ya validó | Si no hay registro guardado, la guía queda como no disponible y el mapa sigue con las teselas en caché |
 
 La explicación que ve la torre de control ("Asignado por algoritmo determinista (Cercanía + Capacidad +
@@ -171,7 +174,7 @@ sequenceDiagram
     participant RA as route-ai-agent (IA)
     participant FD as fleets-drivers
     participant P as PWA del conductor en ruta
-    participant RR as Routing-Restrictions (PostGIS)
+    participant RR as Routing-Restrictions
     participant T as Torre de control
     C->>CA: alerta con texto libre y posición
     CA->>RA: alert.reported (events.road-alerts)
@@ -187,7 +190,7 @@ sequenceDiagram
     P->>P: primera alternativa sin restricciones, guardada en IndexedDB
 ```
 
-La IA decide **si** hay un bloqueo. La geometría decide **a quién** afecta y PostGIS decide **por dónde** se puede
+La IA decide **si** hay un bloqueo. La geometría decide **a quién** afecta y Routing-Restrictions decide **por dónde** se puede
 pasar. Si la IA se equivoca, un falso positivo cuesta un desvío validado y un falso negativo deja la ruta como
 estaba. En ningún caso se manda un camión bajo un puente bajo.
 
